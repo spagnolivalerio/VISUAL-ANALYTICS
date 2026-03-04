@@ -1,2 +1,5 @@
 #!/bin/bash
-docker run -p 8080:80 -v $(pwd)/src:/usr/share/nginx/html va-app
+docker run -p 5173:5173 \
+  -v $(pwd):/app \
+  -v /app/node_modules \
+  va-app
