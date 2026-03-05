@@ -8,6 +8,7 @@ from sklearn.preprocessing import StandardScaler
 
 BASE_DIR = Path(__file__).resolve().parent
 WINE_PATH = BASE_DIR / "data" / "wine.csv"
+LABEL_COL = "Class label"
 
 app = Flask(__name__)
 
@@ -51,7 +52,7 @@ def health():
 @app.get("/mds-classic")
 def mds_classic():
     df = pd.read_csv(WINE_PATH, sep=";", decimal=",")
-    label_col = "Class label"
+    label_col = LABEL_COL if LABEL_COL in df.columns else df.columns[0]
     features = df.drop(columns=[label_col])
     scaled = StandardScaler().fit_transform(features)
 
@@ -63,21 +64,70 @@ def mds_classic():
             "id": int(i + 1),
             "x": float(embedding[i, 0]),
             "y": float(embedding[i, 1]),
-            "class_label": int(df.iloc[i][label_col]),
+            "class_label": df.iloc[i][label_col],
         }
         for i in range(len(df))
     ]
 
+    # Cluster cohesion and separation metrics in MDS space
+    cluster_points = {}
+    for point in points:
+        cluster_points.setdefault(point["class_label"], []).append(point)
+
+    def avg_pairwise_distance(items_a, items_b=None):
+        if items_b is None:
+            n = len(items_a)
+            if n < 2:
+                return 0.0
+            total = 0.0
+            count = 0
+            for i in range(n):
+                for j in range(i + 1, n):
+                    dx = items_a[i]["x"] - items_a[j]["x"]
+                    dy = items_a[i]["y"] - items_a[j]["y"]
+                    total += (dx * dx + dy * dy) ** 0.5
+                    count += 1
+            return total / count
+        if not items_a or not items_b:
+            return 0.0
+        total = 0.0
+        count = 0
+        for a in items_a:
+            for b in items_b:
+                dx = a["x"] - b["x"]
+                dy = a["y"] - b["y"]
+                total += (dx * dx + dy * dy) ** 0.5
+                count += 1
+        return total / count
+
+    cohesion = {
+        str(label): float(avg_pairwise_distance(items))
+        for label, items in cluster_points.items()
+    }
+
+    separation = {}
+    label_values = df[label_col].tolist()
+    labels = list(dict.fromkeys(label_values))
+    for i, label_a in enumerate(labels):
+        for label_b in labels[i + 1 :]:
+            key = f"{label_a}-{label_b}"
+            separation[key] = float(
+                avg_pairwise_distance(cluster_points[label_a], cluster_points[label_b])
+            )
+
     return jsonify(
         count=len(points),
         stress=float(mds.stress_),
+        label_col=label_col,
+        cluster_cohesion=cohesion,
+        cluster_separation=separation,
         points=points,
     ), 200
 
 @app.get("/numeric-attributes")
 def numeric_attributes():
     df = pd.read_csv(WINE_PATH, sep=";", decimal=",")
-    label_col = "Class label"
+    label_col = LABEL_COL if LABEL_COL in df.columns else df.columns[0]
     feature_df = df.drop(columns=[label_col], errors="ignore")
     numeric_attributes = feature_df.select_dtypes(include="number").columns.tolist()
 
@@ -93,7 +143,7 @@ def mds_nonprop():
         return jsonify(error="Missing JSON field 'weights'"), 400
 
     df = pd.read_csv(WINE_PATH, sep=";", decimal=",")
-    label_col = "Class label"
+    label_col = LABEL_COL if LABEL_COL in df.columns else df.columns[0]
     features = df.drop(columns=[label_col], errors="ignore")
     numeric_features = features.select_dtypes(include="number")
     attributes = numeric_features.columns.tolist()
@@ -118,21 +168,71 @@ def mds_nonprop():
     mds = build_precomputed_mds(n_components=2, random_state=200)
     embedding = mds.fit_transform(dissimilarities)
 
-    points = [
-        {
-            "id": int(i + 1),
-            "x": float(embedding[i, 0]),
-            "y": float(embedding[i, 1]),
-            "class_label": int(df.iloc[i][label_col]),
-        }
-        for i in range(n_samples)
-    ]
+    label_values = df[label_col].tolist()
+    points = []
+    for i in range(n_samples):
+        points.append(
+            {
+                "id": int(i + 1),
+                "x": float(embedding[i, 0]),
+                "y": float(embedding[i, 1]),
+                "class_label": label_values[i],
+            }
+        )
+
+    # Cluster cohesion and separation metrics in MDS space
+    cluster_points = {}
+    for point in points:
+        cluster_points.setdefault(point["class_label"], []).append(point)
+
+    def avg_pairwise_distance(items_a, items_b=None):
+        if items_b is None:
+            n = len(items_a)
+            if n < 2:
+                return 0.0
+            total = 0.0
+            count = 0
+            for i in range(n):
+                for j in range(i + 1, n):
+                    dx = items_a[i]["x"] - items_a[j]["x"]
+                    dy = items_a[i]["y"] - items_a[j]["y"]
+                    total += (dx * dx + dy * dy) ** 0.5
+                    count += 1
+            return total / count
+        if not items_a or not items_b:
+            return 0.0
+        total = 0.0
+        count = 0
+        for a in items_a:
+            for b in items_b:
+                dx = a["x"] - b["x"]
+                dy = a["y"] - b["y"]
+                total += (dx * dx + dy * dy) ** 0.5
+                count += 1
+        return total / count
+
+    cohesion = {
+        str(label): float(avg_pairwise_distance(items))
+        for label, items in cluster_points.items()
+    }
+
+    separation = {}
+    labels = list(dict.fromkeys(label_values))
+    for i, label_a in enumerate(labels):
+        for label_b in labels[i + 1 :]:
+            key = f"{label_a}-{label_b}"
+            separation[key] = float(
+                avg_pairwise_distance(cluster_points[label_a], cluster_points[label_b])
+            )
 
     return jsonify(
         count=len(points),
         stress=float(mds.stress_),
+        label_col=label_col,
         attributes=attributes,
         weights=weights.tolist(),
+        cluster_cohesion=cohesion,
+        cluster_separation=separation,
         points=points,
     ), 200
 

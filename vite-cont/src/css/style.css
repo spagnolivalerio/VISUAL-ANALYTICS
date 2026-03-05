@@ -56,10 +56,47 @@ p {
   border: 1px solid #d6dde6;
   border-radius: 8px;
   background: #fbfcfe;
-  height: clamp(500px, 60vh, 700px);
+  height: clamp(380px, 48vh, 520px);
   width: 100%;
   overflow: hidden;
   flex: 1;
+}
+
+.metrics-panel {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid #d6dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  display: grid;
+  gap: 4px;
+  color: #425466;
+  font-size: 12px;
+}
+
+.metrics-panel p {
+  margin: 0;
+}
+
+.metric-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cluster-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid #d6dde6;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.metric-label {
+  font-weight: 600;
+  color: #2f3a46;
 }
 
 .plot-title-row {
@@ -256,9 +293,9 @@ p {
   body {
     padding: 12px;
   }
-  .plot-container { height: 460px; }
+  .plot-container { height: 360px; }
   .weights-panel {
-    height: 460px;
+    height: 360px;
   }
 }
 

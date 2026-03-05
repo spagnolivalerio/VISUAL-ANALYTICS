@@ -274,6 +274,7 @@ export function initNonPropMds() {
   const container = document.getElementById("mds-non-proportional-container");
   const runButton = document.getElementById("run-nonprop-btn");
   const status = document.getElementById("nonprop-status");
+  const metricsPanel = document.getElementById("mds-nonprop-metrics");
   const toggleButton = document.getElementById("toggle-centroids-nonprop");
 
   if (!container || !runButton || !status) {
@@ -333,6 +334,91 @@ export function initNonPropMds() {
       const points = payload.points || [];
       if (!points.length) {
         throw new Error("No points returned.");
+      }
+
+      if (metricsPanel) {
+        const plotLabels = [...new Set(points.map((p) => String(p.class_label)))];
+        const cohesion = payload.cluster_cohesion || {};
+        const separation = payload.cluster_separation || {};
+        const separationByLabelPayload = payload.cluster_separation_by_label || {};
+        const hasMetrics =
+          Object.keys(cohesion).length > 0 &&
+          (Object.keys(separation).length > 0 || Object.keys(separationByLabelPayload).length > 0);
+        if (!hasMetrics) {
+          metricsPanel.innerHTML = `
+            <p>cohesion: -</p>
+            <p>separation: -</p>
+            <p>ratio: 0</p>
+          `;
+        } else {
+
+          const cohesionKeys = new Set(Object.keys(cohesion).map(String));
+          const clusterLabels = plotLabels.filter((label) => cohesionKeys.has(label));
+          const cohesionLabels = clusterLabels.length ? clusterLabels : Array.from(cohesionKeys);
+          const colorDomain = plotLabels.length ? plotLabels : cohesionLabels;
+          const palette = d3.schemeTableau10;
+          const colorMap = new Map(colorDomain.map((label, i) => [label, palette[i % palette.length]]));
+          const getColor = (label) => colorMap.get(String(label)) || palette[0];
+          const separationByCluster = {};
+          if (Object.keys(separationByLabelPayload).length) {
+            for (const label of Object.keys(separationByLabelPayload)) {
+              separationByCluster[String(label)] = [separationByLabelPayload[label]];
+            }
+          } else {
+            for (const key of Object.keys(separation)) {
+              const [a, b] = key.split("-");
+              const sa = String(a);
+              const sb = String(b);
+              if (!separationByCluster[sa]) separationByCluster[sa] = [];
+              if (!separationByCluster[sb]) separationByCluster[sb] = [];
+              separationByCluster[sa].push(separation[key]);
+              separationByCluster[sb].push(separation[key]);
+            }
+          }
+
+          const format = (value) => Number(value).toFixed(3);
+          const cohesionLines = cohesionLabels
+            .map(
+              (label) => `
+                <span class="cluster-swatch" style="background:${getColor(label)}"></span>
+                <span>${format(cohesion[label])}</span>
+              `
+            )
+            .join(" ");
+
+          const separationPairs = Object.keys(separation)
+            .map((key) => {
+              const [a, b] = key.split("-");
+              const sa = String(a);
+              const sb = String(b);
+              return `
+                <span class="cluster-swatch" style="background:${getColor(sa)}"></span>
+                <span class="cluster-swatch" style="background:${getColor(sb)}"></span>
+                <span>${format(separation[key])}</span>
+              `;
+            })
+            .join(" ");
+
+          const cohesionValues = cohesionLabels.map((label) => Number(cohesion[label]) || 0);
+          const meanCohesion =
+            cohesionValues.length
+              ? cohesionValues.reduce((sum, v) => sum + v, 0) / cohesionValues.length
+              : 0;
+
+          const separationValues = Object.keys(separation).map((key) => Number(separation[key]) || 0);
+          const meanSeparation =
+            separationValues.length
+              ? separationValues.reduce((sum, v) => sum + v, 0) / separationValues.length
+              : 0;
+
+          const ratio = meanSeparation ? meanCohesion / meanSeparation : 0;
+
+          metricsPanel.innerHTML = `
+            <div class="metric-line"><span class="metric-label">cohesion:</span> ${cohesionLines || "-"}</div>
+            <div class="metric-line"><span class="metric-label">separation:</span> ${separationPairs || "-"}</div>
+            <div class="metric-line"><span class="metric-label">ratio:</span> ${format(ratio)}</div>
+          `;
+        }
       }
 
       lastPoints = points;
