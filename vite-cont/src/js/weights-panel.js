@@ -37,6 +37,7 @@ function buildWeightRow(attributeName, initialValue = 1) {
 
 export async function renderWeightsPanel() {
   const list = document.getElementById("weights-list");
+  const resetButton = document.getElementById("reset-weights-btn");
   if (!list) {
     return;
   }
@@ -65,6 +66,16 @@ export async function renderWeightsPanel() {
     list.innerHTML = "";
     for (const attributeName of attributes) {
       list.appendChild(buildWeightRow(attributeName, 1));
+    }
+
+    if (resetButton) {
+      resetButton.addEventListener("click", () => {
+        const sliders = list.querySelectorAll("input[type='range'][data-attribute]");
+        sliders.forEach((slider) => {
+          slider.value = "1";
+          slider.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+      });
     }
   } catch (error) {
     list.textContent = `Unable to load attributes: ${error.message}`;

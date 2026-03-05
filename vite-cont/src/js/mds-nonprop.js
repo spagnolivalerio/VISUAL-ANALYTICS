@@ -24,6 +24,7 @@ function collectWeights() {
 }
 
 function drawNonPropMds(container, points) {
+  container.classList.remove("plot-placeholder");
   container.innerHTML = "";
   const { width, height } = getPlotSize(container);
 
@@ -85,17 +86,18 @@ export function initNonPropMds() {
     return;
   }
 
-  container.textContent = "Seleziona i pesi e premi il pulsante per calcolare l'MDS non proporzionale.";
+  container.textContent = "Choose appropriate weights and click 'Run' to compute MDS.";
+  container.classList.add("plot-placeholder");
 
   runButton.addEventListener("click", async () => {
     const weights = collectWeights();
     if (!Object.keys(weights).length) {
-      status.textContent = "Pesi non disponibili.";
+      status.textContent = "No weights available.";
       return;
     }
 
     runButton.disabled = true;
-    status.textContent = "Calcolo in corso...";
+    status.textContent = "Computing...";
 
     try {
       const response = await fetch("/api/mds-nonprop", {
@@ -122,7 +124,7 @@ export function initNonPropMds() {
 
       lastPoints = points;
       drawNonPropMds(container, points);
-      status.textContent = `OK. Stress: ${Number(payload.stress).toFixed(3)}`;
+      status.textContent = "";
 
       if (resizeObserver) {
         resizeObserver.disconnect();
