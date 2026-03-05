@@ -23,7 +23,7 @@ function collectWeights() {
   return weights;
 }
 
-function drawNonPropMds(container, points) {
+function drawNonPropMds(container, points, showCentroids) {
   container.classList.remove("plot-placeholder");
   container.innerHTML = "";
   const { width, height } = getPlotSize(container);
@@ -64,7 +64,12 @@ function drawNonPropMds(container, points) {
     .style("font-size", "12px")
     .text("MDS Y");
 
-  g.append("g")
+  const pointsLayer = g.append("g").attr("class", "cluster-points");
+  const centroidLayer = g.append("g").attr("class", "cluster-centroids");
+  const linksLayer = g.append("g").attr("class", "cluster-links");
+
+  const circles = pointsLayer
+    .append("g")
     .selectAll("circle")
     .data(points)
     .join("circle")
@@ -72,18 +77,226 @@ function drawNonPropMds(container, points) {
     .attr("cy", (d) => y(d.y))
     .attr("r", 3.5)
     .attr("fill", (d) => color(d.class_label))
-    .attr("opacity", 0.85)
-    .append("title")
-    .text((d) => `id: ${d.id}, class: ${d.class_label}`);
+    .attr("opacity", 0.85);
+
+  circles.append("title").text((d) => `id: ${d.id}, class: ${d.class_label}`);
+
+  const clusters = d3.group(points, (d) => d.class_label);
+  const centroids = Array.from(clusters, ([label, items]) => ({
+    label,
+    x: d3.mean(items, (d) => d.x),
+    y: d3.mean(items, (d) => d.y),
+  }));
+
+  const centroidCircles = centroidLayer
+    .selectAll("circle")
+    .data(centroids)
+    .join("circle")
+    .attr("cx", (d) => x(d.x))
+    .attr("cy", (d) => y(d.y))
+    .attr("r", 7)
+    .attr("fill", (d) => color(d.label))
+    .attr("stroke", "#ffffff")
+    .attr("stroke-width", 1.5)
+    .attr("opacity", 0.95)
+    .style("cursor", "pointer");
+
+  centroidCircles.append("title").text((d) => `centroid: ${d.label}`);
+  centroidLayer
+    .attr("display", showCentroids ? null : "none")
+    .style("pointer-events", showCentroids ? "auto" : "none");
+
+  let currentSelection = null;
+
+  function resetHighlight() {
+    linksLayer.selectAll("line").remove();
+    circles.attr("opacity", 0.85);
+    centroidCircles.attr("opacity", 0.95);
+    currentSelection = null;
+  }
+
+  function highlightCluster(label) {
+    linksLayer.selectAll("line").remove();
+    const cluster = clusters.get(label) || [];
+
+    circles.attr("opacity", 0.12);
+    circles
+      .filter((p) => p.class_label === label)
+      .attr("opacity", 0.9);
+
+    centroidCircles.attr("opacity", 0.25);
+    centroidCircles
+      .filter((c) => c.label === label)
+      .attr("opacity", 1);
+
+    const centroid = centroids.find((c) => c.label === label);
+    if (!centroid) {
+      return;
+    }
+
+    const lines = linksLayer.selectAll("line").data(cluster, (p) => p.id);
+    lines
+      .join(
+        (enter) =>
+          enter
+            .append("line")
+            .attr("x1", x(centroid.x))
+            .attr("y1", y(centroid.y))
+            .attr("x2", (d) => x(d.x))
+            .attr("y2", (d) => y(d.y))
+            .attr("stroke", "#6b7a90")
+            .attr("stroke-width", 1)
+            .attr("opacity", 0.6),
+        (update) =>
+          update
+            .attr("x1", x(centroid.x))
+            .attr("y1", y(centroid.y))
+            .attr("x2", (d) => x(d.x))
+            .attr("y2", (d) => y(d.y)),
+        (exit) => exit.remove()
+      );
+    currentSelection = { type: "centroid", key: label };
+  }
+
+  function highlightPoint(pointId) {
+    linksLayer.selectAll("line").remove();
+    const selected = points.find((p) => p.id === pointId);
+    if (!selected) {
+      return;
+    }
+    const centroid = centroids.find((c) => c.label === selected.class_label);
+    if (!centroid) {
+      return;
+    }
+
+    circles.attr("opacity", 0.12);
+    circles
+      .filter((p) => p.class_label === selected.class_label)
+      .attr("opacity", 0.9);
+    circles
+      .filter((p) => p.id === selected.id)
+      .attr("opacity", 1)
+      .attr("r", 4.6);
+
+    centroidCircles.attr("opacity", 0.25);
+    centroidCircles
+      .filter((c) => c.label === selected.class_label)
+      .attr("opacity", 1);
+
+    linksLayer.selectAll("line").remove();
+    linksLayer
+      .append("line")
+      .attr("x1", x(centroid.x))
+      .attr("y1", y(centroid.y))
+      .attr("x2", x(selected.x))
+      .attr("y2", y(selected.y))
+      .attr("stroke", "#6b7a90")
+      .attr("stroke-width", 1)
+      .attr("opacity", 0.7);
+    currentSelection = { type: "point", key: selected.id };
+  }
+
+  centroidCircles.on("click", (event, d) => {
+    event.stopPropagation();
+    if (currentSelection?.type === "centroid" && currentSelection.key === d.label) {
+      resetHighlight();
+      window.dispatchEvent(new CustomEvent("mds:reset"));
+      return;
+    }
+    if (currentSelection?.type === "point") {
+      resetHighlight();
+    }
+    highlightCluster(d.label);
+    window.dispatchEvent(new CustomEvent("mds:centroid", { detail: { label: d.label } }));
+  });
+
+  svg.on("click", () => {
+    resetHighlight();
+    window.dispatchEvent(new CustomEvent("mds:reset"));
+  });
+
+  circles.on("click", (event, d) => {
+    event.stopPropagation();
+    if (currentSelection?.type === "point" && currentSelection.key === d.id) {
+      resetHighlight();
+      window.dispatchEvent(new CustomEvent("mds:reset"));
+      return;
+    }
+    if (currentSelection?.type === "centroid") {
+      resetHighlight();
+    }
+    highlightPoint(d.id);
+    window.dispatchEvent(new CustomEvent("mds:point", { detail: { id: d.id } }));
+  });
+
+  function onCentroid(event) {
+    if (currentSelection?.type === "point") {
+      resetHighlight();
+    }
+    if (currentSelection?.type === "centroid" && currentSelection.key === event.detail.label) {
+      return;
+    }
+    highlightCluster(event.detail.label);
+  }
+
+  function onPoint(event) {
+    if (currentSelection?.type === "centroid") {
+      resetHighlight();
+    }
+    if (currentSelection?.type === "point" && currentSelection.key === event.detail.id) {
+      return;
+    }
+    highlightPoint(event.detail.id);
+  }
+
+  function onReset() {
+    resetHighlight();
+  }
+
+  if (container._mdsCentroidHandler) {
+    window.removeEventListener("mds:centroid", container._mdsCentroidHandler);
+  }
+  if (container._mdsResetHandler) {
+    window.removeEventListener("mds:reset", container._mdsResetHandler);
+  }
+  if (container._mdsPointHandler) {
+    window.removeEventListener("mds:point", container._mdsPointHandler);
+  }
+  container._mdsCentroidHandler = onCentroid;
+  container._mdsResetHandler = onReset;
+  container._mdsPointHandler = onPoint;
+  window.addEventListener("mds:centroid", onCentroid);
+  window.addEventListener("mds:reset", onReset);
+  window.addEventListener("mds:point", onPoint);
 }
 
 export function initNonPropMds() {
   const container = document.getElementById("mds-non-proportional-container");
   const runButton = document.getElementById("run-nonprop-btn");
   const status = document.getElementById("nonprop-status");
+  const toggleButton = document.getElementById("toggle-centroids-nonprop");
 
   if (!container || !runButton || !status) {
     return;
+  }
+
+  if (!container.dataset.showCentroids) {
+    container.dataset.showCentroids = "true";
+  }
+  if (toggleButton) {
+    toggleButton.setAttribute("aria-pressed", container.dataset.showCentroids);
+    if (!toggleButton._centroidToggleBound) {
+      toggleButton.addEventListener("click", () => {
+        const next = container.dataset.showCentroids !== "true";
+        container.dataset.showCentroids = next ? "true" : "false";
+        toggleButton.setAttribute("aria-pressed", container.dataset.showCentroids);
+        d3.select(container)
+          .select(".cluster-centroids")
+          .attr("display", next ? null : "none")
+          .style("pointer-events", next ? "auto" : "none");
+      });
+      toggleButton._centroidToggleBound = true;
+    }
   }
 
   container.textContent = "Choose appropriate weights and click 'Run' to compute MDS.";
@@ -123,7 +336,7 @@ export function initNonPropMds() {
       }
 
       lastPoints = points;
-      drawNonPropMds(container, points);
+      drawNonPropMds(container, points, container.dataset.showCentroids === "true");
       status.textContent = "";
 
       if (resizeObserver) {
@@ -131,7 +344,7 @@ export function initNonPropMds() {
       }
       resizeObserver = new ResizeObserver(() => {
         if (lastPoints.length) {
-          drawNonPropMds(container, lastPoints);
+          drawNonPropMds(container, lastPoints, container.dataset.showCentroids === "true");
         }
       });
       resizeObserver.observe(container);

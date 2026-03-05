@@ -48,8 +48,8 @@ p {
 
 .plot-card h2 {
   font-size: 18px;
-  margin-bottom: 10px;
-  text-align: center;
+  margin: 0;
+  text-align: left;
 }
 
 .plot-container {
@@ -60,6 +60,39 @@ p {
   width: 100%;
   overflow: hidden;
   flex: 1;
+}
+
+.plot-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+
+.centroid-toggle {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #d6dde6;
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: #1f6feb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.centroid-toggle[aria-pressed="false"] {
+  color: #7b8794;
+  background: #eef2f7;
+}
+
+.centroid-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
 }
 
 .plot-container.plot-placeholder {
