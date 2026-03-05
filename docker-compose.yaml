@@ -1,0 +1,35 @@
+services:
+  vite:
+    container_name: vite-cont
+    build:
+      context: ./vite-cont
+      dockerfile: Dockerfile
+    working_dir: /app
+    command: npm run dev
+    depends_on:
+      - data-processing
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./vite-cont:/app
+      - /app/node_modules
+    networks:
+      - va-net
+
+  data-processing:
+    container_name: data-processing-cont
+    build:
+      context: ./data-processing-cont
+      dockerfile: Dockerfile
+    working_dir: /app
+    command: python app.py
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data-processing-cont:/app
+    networks:
+      - va-net
+
+networks:
+  va-net:
+    driver: bridge
