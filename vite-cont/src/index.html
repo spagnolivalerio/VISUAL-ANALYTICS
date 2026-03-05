@@ -3,11 +3,62 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite Health Check</title>
+    <title>Parallel Coordinates - Wine Sample</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: #f5f7fa;
+        color: #1b2430;
+      }
+
+      h1 {
+        margin: 0 0 16px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      input,
+      button {
+        font-size: 16px;
+        padding: 8px 10px;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      #status {
+        margin: 10px 0 16px;
+        min-height: 20px;
+      }
+
+      #chart {
+        background: #ffffff;
+        border: 1px solid #d6dde6;
+        border-radius: 8px;
+        overflow: auto;
+      }
+    </style>
   </head>
   <body>
-    <h1>Data Processing Health</h1>
-    <p id="health-response">Loading...</p>
+    <h1>Wine Sample Parallel Coordinates</h1>
+
+    <div class="controls">
+      <label for="sample-size">Number of tuples:</label>
+      <input id="sample-size" type="number" min="1" step="1" value="30" />
+      <button id="load-btn" type="button">Load sample</button>
+    </div>
+
+    <div id="status">Ready.</div>
+    <div id="chart"></div>
+
     <script type="module" src="./js/main.js"></script>
   </body>
 </html>
