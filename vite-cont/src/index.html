@@ -28,7 +28,7 @@
 
         <article class="plot-card">
           <div class="plot-title-row">
-            <h2>Non-Proportional MDS</h2>
+            <h2>Non-Proportional MDS <span id="nonprop-timestep" class="plot-timestep"></span></h2>
             <button id="toggle-centroids-nonprop" type="button" class="centroid-toggle" aria-pressed="true" aria-label="Toggle centroids">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 5c-5.5 0-9.5 5-9.5 7s4 7 9.5 7 9.5-5 9.5-7-4-7-9.5-7zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>
@@ -78,11 +78,17 @@
           </div>
         <div class="star-block">
           <div class="star-graph-1">
+            <button class="sync-btn" type="button" data-target="star-graph-1" aria-label="Sync MDS from this configuration">
+              📈
+            </button>
             <div id="star-graph-1" class="star-graph-1-canvas" aria-live="polite"></div>
           </div>
         </div>
         <div class="star-block">
           <div class="star-graph-2">
+            <button class="sync-btn" type="button" data-target="star-graph-2" aria-label="Sync MDS from this configuration">
+              📈
+            </button>
             <div id="star-graph-2" class="star-graph-2-canvas" aria-live="polite"></div>
           </div>
         </div>

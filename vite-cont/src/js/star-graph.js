@@ -11,7 +11,12 @@ function buildPath(points) {
   return `M ${first.x} ${first.y} ${rest.map((p) => `L ${p.x} ${p.y}`).join(" ")} Z`;
 }
 
-export async function renderStarGraph(weights, targetId) {
+function formatRateo(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return null;
+  return Number(value).toFixed(3);
+}
+
+export async function renderStarGraph(weights, targetId, rateo = null) {
   const container = document.getElementById(targetId);
   if (!container) return;
 
@@ -21,6 +26,18 @@ export async function renderStarGraph(weights, targetId) {
     container.textContent = "No configuration selected.";
     return;
   }
+
+  const rateoText = formatRateo(rateo);
+  if (rateoText !== null) {
+    const badge = document.createElement("div");
+    badge.className = "star-rateo";
+    badge.textContent = `ratio: ${rateoText}`;
+    container.appendChild(badge);
+  }
+
+  const embedTarget = document.createElement("div");
+  embedTarget.className = "star-graph-embed";
+  container.appendChild(embedTarget);
 
   const entries = Object.entries(weights);
   const labels = entries.map(([key]) => key);
@@ -146,5 +163,5 @@ export async function renderStarGraph(weights, targetId) {
     ],
   };
 
-  await embed(container, spec, { actions: false, renderer: "svg" });
+  await embed(embedTarget, spec, { actions: false, renderer: "svg" });
 }

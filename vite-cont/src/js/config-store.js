@@ -52,7 +52,7 @@ function openDb() {
   return dbPromise;
 }
 
-export async function saveConfiguration({ timestep, weights, rateo }) {
+export async function saveConfiguration({ timestep, weights, rateo, points }) {
   const db = await openDb();
 
   return new Promise((resolve, reject) => {
@@ -64,6 +64,7 @@ export async function saveConfiguration({ timestep, weights, rateo }) {
       createdAt: new Date().toISOString(),
       weights,
       rateo,
+      points,
     };
 
     const request = store.add(record);
@@ -95,5 +96,18 @@ export async function deleteConfiguration(id) {
 
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error || new Error("Delete failed"));
+  });
+}
+
+export async function getConfigurationById(id) {
+  const db = await openDb();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, "readonly");
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(id);
+
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error("Read failed"));
   });
 }

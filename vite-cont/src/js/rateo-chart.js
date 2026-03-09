@@ -133,9 +133,11 @@ export async function renderRateoChart() {
       window.__lineSelectedId = d.id;
       window.__lineSelectedTimestep = d.timestep;
       window.__starSelections = window.__starSelections || {};
+      window.__starSelectionsId = window.__starSelectionsId || {};
       if (targetId) {
         window.__starSelections[targetId] = d.timestep;
-        renderStarGraph(d.weights, targetId);
+        window.__starSelectionsId[targetId] = d.id;
+        renderStarGraph(d.weights, targetId, d.rateo);
       }
       applyPointStyles();
     });
@@ -190,10 +192,12 @@ export async function renderRateoChart() {
         if (selectedTimestep !== null && selectedTimestep !== undefined) {
           if (window.__starSelections?.["star-graph-1"] === selectedTimestep) {
             delete window.__starSelections["star-graph-1"];
+            if (window.__starSelectionsId) delete window.__starSelectionsId["star-graph-1"];
             renderStarGraph(null, "star-graph-1");
           }
           if (window.__starSelections?.["star-graph-2"] === selectedTimestep) {
             delete window.__starSelections["star-graph-2"];
+            if (window.__starSelectionsId) delete window.__starSelectionsId["star-graph-2"];
             renderStarGraph(null, "star-graph-2");
           }
         }

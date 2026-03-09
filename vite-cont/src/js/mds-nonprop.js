@@ -11,6 +11,19 @@ let resizeObserver;
 let lastPoints = [];
 let sessionTimestep = 0;
 
+export function renderNonPropFromSaved(points, timestep) {
+  const container = document.getElementById("mds-non-proportional-container");
+  const timestepLabel = document.getElementById("nonprop-timestep");
+  if (!container || !Array.isArray(points) || !points.length) {
+    return;
+  }
+  lastPoints = points;
+  drawNonPropMds(container, points, container.dataset.showCentroids === "true");
+  if (timestepLabel) {
+    timestepLabel.textContent = timestep === undefined ? "(saved)" : `(t=${timestep})`;
+  }
+}
+
 function truncate3(value) {
   return Math.trunc(value * 1000) / 1000;
 }
@@ -208,6 +221,7 @@ function drawNonPropMds(container, points, showCentroids) {
     event.stopPropagation();
     if (currentSelection?.type === "centroid" && currentSelection.key === d.label) {
       resetHighlight();
+      window.__mdsSelection = null;
       window.dispatchEvent(new CustomEvent("mds:reset"));
       return;
     }
@@ -215,11 +229,13 @@ function drawNonPropMds(container, points, showCentroids) {
       resetHighlight();
     }
     highlightCluster(d.label);
+    window.__mdsSelection = { type: "centroid", key: d.label };
     window.dispatchEvent(new CustomEvent("mds:centroid", { detail: { label: d.label } }));
   });
 
   svg.on("click", () => {
     resetHighlight();
+    window.__mdsSelection = null;
     window.dispatchEvent(new CustomEvent("mds:reset"));
   });
 
@@ -227,6 +243,7 @@ function drawNonPropMds(container, points, showCentroids) {
     event.stopPropagation();
     if (currentSelection?.type === "point" && currentSelection.key === d.id) {
       resetHighlight();
+      window.__mdsSelection = null;
       window.dispatchEvent(new CustomEvent("mds:reset"));
       return;
     }
@@ -234,6 +251,7 @@ function drawNonPropMds(container, points, showCentroids) {
       resetHighlight();
     }
     highlightPoint(d.id);
+    window.__mdsSelection = { type: "point", key: d.id };
     window.dispatchEvent(new CustomEvent("mds:point", { detail: { id: d.id } }));
   });
 
@@ -276,6 +294,23 @@ function drawNonPropMds(container, points, showCentroids) {
   window.addEventListener("mds:centroid", onCentroid);
   window.addEventListener("mds:reset", onReset);
   window.addEventListener("mds:point", onPoint);
+
+  if (window.__mdsSelection?.type === "centroid") {
+    const label = window.__mdsSelection.key;
+    if (clusters.has(label)) {
+      window.dispatchEvent(new CustomEvent("mds:centroid", { detail: { label } }));
+    } else {
+      window.__mdsSelection = null;
+    }
+  }
+  if (window.__mdsSelection?.type === "point") {
+    const id = window.__mdsSelection.key;
+    if (points.find((p) => p.id === id)) {
+      window.dispatchEvent(new CustomEvent("mds:point", { detail: { id } }));
+    } else {
+      window.__mdsSelection = null;
+    }
+  }
 }
 
 export function initNonPropMds() {
@@ -284,6 +319,7 @@ export function initNonPropMds() {
   const status = document.getElementById("nonprop-status");
   const metricsPanel = document.getElementById("mds-nonprop-metrics");
   const toggleButton = document.getElementById("toggle-centroids-nonprop");
+  const timestepLabel = document.getElementById("nonprop-timestep");
 
   if (!container || !runButton || !status) {
     return;
@@ -435,16 +471,21 @@ export function initNonPropMds() {
       const timestep = sessionTimestep;
       const targetId = window.__starTarget || null;
       try {
-        await saveConfiguration({ timestep, weights, rateo: ratioValue });
+        await saveConfiguration({ timestep, weights, rateo: ratioValue, points });
         sessionTimestep += 1;
         status.textContent = `Configuration saved (t=${timestep}).`;
+        if (timestepLabel) {
+          timestepLabel.textContent = `(t=${timestep})`;
+        }
         window.__starSelections = window.__starSelections || {};
         if (targetId) {
           window.__starSelections[targetId] = timestep;
+          window.__starSelectionsId = window.__starSelectionsId || {};
+          window.__starSelectionsId[targetId] = undefined;
         }
         renderRateoChart();
         if (targetId) {
-          renderStarGraph(weights, targetId);
+          renderStarGraph(weights, targetId, ratioValue);
         }
       } catch (error) {
         status.textContent = `Save failed: ${error.message}`;
