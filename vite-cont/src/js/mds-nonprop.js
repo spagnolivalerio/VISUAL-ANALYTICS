@@ -1,6 +1,7 @@
 import * as d3 from "d3";
 import { saveConfiguration } from "./config-store";
 import { renderRateoChart } from "./rateo-chart";
+import { renderStarGraph } from "./star-graph";
 
 const MARGIN = { top: 20, right: 20, bottom: 40, left: 46 };
 const MIN_WIDTH = 320;
@@ -432,11 +433,13 @@ export function initNonPropMds() {
       lastPoints = points;
       drawNonPropMds(container, points, container.dataset.showCentroids === "true");
       const timestep = sessionTimestep;
+      const targetId = window.__starTarget || "star-graph";
       try {
         await saveConfiguration({ timestep, weights, rateo: ratioValue });
         sessionTimestep += 1;
         status.textContent = `Configuration saved (t=${timestep}).`;
         renderRateoChart();
+        renderStarGraph(weights, targetId);
       } catch (error) {
         status.textContent = `Save failed: ${error.message}`;
       }

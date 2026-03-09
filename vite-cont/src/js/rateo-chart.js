@@ -14,7 +14,7 @@ export async function renderRateoChart() {
   if (!container) {
     return;
   }
-  const starContainer = document.getElementById("star-graph");
+  const getTarget = () => window.__starTarget || "star-graph";
 
   const sessionId = getCurrentSessionId();
   const all = await getAllConfigurations();
@@ -130,17 +130,15 @@ export async function renderRateoChart() {
     .on("click", (event, d) => {
       pointGroup.attr("r", 3.5).attr("opacity", 0.6);
       d3.select(event.currentTarget).attr("r", 5).attr("opacity", 1);
-      if (!starContainer || starContainer.dataset.locked !== "true") {
-        renderStarGraph(d.weights, "star-graph");
-      }
+      const targetId = getTarget();
+      renderStarGraph(d.weights, targetId);
     });
 
   if (points.length) {
     pointGroup.attr("r", 3.5).attr("opacity", 0.6);
     pointGroup.filter((d, i) => i === points.length - 1).attr("r", 5).attr("opacity", 1);
-    if (!starContainer || starContainer.dataset.locked !== "true") {
-      renderStarGraph(points[points.length - 1].weights, "star-graph");
-    }
+    const targetId = getTarget();
+    renderStarGraph(points[points.length - 1].weights, targetId);
   }
 
   if (!container._rateoResizeObserver) {
