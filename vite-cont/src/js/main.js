@@ -9,19 +9,25 @@ function setSelectedStarTarget(targetId) {
   const right = document.getElementById("star-graph-compare");
   if (left) left.dataset.selected = targetId === "star-graph" ? "true" : "false";
   if (right) right.dataset.selected = targetId === "star-graph-compare" ? "true" : "false";
-  window.__starTarget = targetId;
+  window.__starTarget = targetId || null;
 }
 
 function setupStarSelection() {
   const left = document.getElementById("star-graph");
   const right = document.getElementById("star-graph-compare");
   if (left) {
-    left.addEventListener("click", () => setSelectedStarTarget("star-graph"));
+    left.addEventListener("click", () => {
+      const next = window.__starTarget === "star-graph" ? null : "star-graph";
+      setSelectedStarTarget(next);
+    });
   }
   if (right) {
-    right.addEventListener("click", () => setSelectedStarTarget("star-graph-compare"));
+    right.addEventListener("click", () => {
+      const next = window.__starTarget === "star-graph-compare" ? null : "star-graph-compare";
+      setSelectedStarTarget(next);
+    });
   }
-  setSelectedStarTarget("star-graph");
+  setSelectedStarTarget(null);
 }
 
 

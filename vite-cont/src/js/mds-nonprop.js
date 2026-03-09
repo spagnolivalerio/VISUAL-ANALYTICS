@@ -433,13 +433,19 @@ export function initNonPropMds() {
       lastPoints = points;
       drawNonPropMds(container, points, container.dataset.showCentroids === "true");
       const timestep = sessionTimestep;
-      const targetId = window.__starTarget || "star-graph";
+      const targetId = window.__starTarget || null;
       try {
         await saveConfiguration({ timestep, weights, rateo: ratioValue });
         sessionTimestep += 1;
         status.textContent = `Configuration saved (t=${timestep}).`;
+        window.__starSelections = window.__starSelections || {};
+        if (targetId) {
+          window.__starSelections[targetId] = timestep;
+        }
         renderRateoChart();
-        renderStarGraph(weights, targetId);
+        if (targetId) {
+          renderStarGraph(weights, targetId);
+        }
       } catch (error) {
         status.textContent = `Save failed: ${error.message}`;
       }
