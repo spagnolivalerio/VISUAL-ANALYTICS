@@ -68,6 +68,42 @@
       </section>
     </main>
 
+    <section class="rateo-section">
+      <div class="rateo-row">
+        <div class="rateo-scroll">
+          <div id="rateo-chart" class="rateo-chart" aria-live="polite"></div>
+        </div>
+        <div class="star-block">
+          <div class="star-graph">
+            <div id="star-graph" class="star-graph-canvas" aria-live="polite"></div>
+          </div>
+          <button
+            id="lock-star-graph-btn"
+            class="lock-btn"
+            type="button"
+            data-target="star-graph"
+            aria-pressed="false"
+          >
+            Lock view
+          </button>
+        </div>
+        <div class="star-block">
+          <div class="star-graph-compare">
+            <div id="star-graph-compare" class="star-graph-compare-canvas" aria-live="polite"></div>
+          </div>
+          <button
+            id="lock-star-graph-compare-btn"
+            class="lock-btn"
+            type="button"
+            data-target="star-graph-compare"
+            aria-pressed="false"
+          >
+            Lock view
+          </button>
+        </div>
+      </div>
+    </section>
+
     <script type="module" src="./js/main.js"></script>
   </body>
 </html>

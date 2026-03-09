@@ -1,4 +1,6 @@
 import * as d3 from "d3";
+import { saveConfiguration } from "./config-store";
+import { renderRateoChart } from "./rateo-chart";
 
 const MARGIN = { top: 20, right: 20, bottom: 40, left: 46 };
 const MIN_WIDTH = 320;
@@ -6,6 +8,11 @@ const MIN_HEIGHT = 420;
 
 let resizeObserver;
 let lastPoints = [];
+let sessionTimestep = 0;
+
+function truncate3(value) {
+  return Math.trunc(value * 1000) / 1000;
+}
 
 function getPlotSize(container) {
   const rect = container.getBoundingClientRect();
@@ -313,6 +320,7 @@ export function initNonPropMds() {
     runButton.disabled = true;
     status.textContent = "Computing...";
 
+    let ratioValue = null;
     try {
       const response = await fetch("/api/mds-nonprop", {
         method: "POST",
@@ -411,19 +419,27 @@ export function initNonPropMds() {
               ? separationValues.reduce((sum, v) => sum + v, 0) / separationValues.length
               : 0;
 
-          const ratio = meanSeparation ? meanCohesion / meanSeparation : 0;
+          ratioValue = meanSeparation ? truncate3(meanCohesion / meanSeparation) : 0;
 
           metricsPanel.innerHTML = `
             <div class="metric-line"><span class="metric-label">cohesion:</span> ${cohesionLines || "-"}</div>
             <div class="metric-line"><span class="metric-label">separation:</span> ${separationPairs || "-"}</div>
-            <div class="metric-line"><span class="metric-label">ratio:</span> ${format(ratio)}</div>
+            <div class="metric-line"><span class="metric-label">ratio:</span> ${format(ratioValue)}</div>
           `;
         }
       }
 
       lastPoints = points;
       drawNonPropMds(container, points, container.dataset.showCentroids === "true");
-      status.textContent = "";
+      const timestep = sessionTimestep;
+      try {
+        await saveConfiguration({ timestep, weights, rateo: ratioValue });
+        sessionTimestep += 1;
+        status.textContent = `Configuration saved (t=${timestep}).`;
+        renderRateoChart();
+      } catch (error) {
+        status.textContent = `Save failed: ${error.message}`;
+      }
 
       if (resizeObserver) {
         resizeObserver.disconnect();

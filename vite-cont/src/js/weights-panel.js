@@ -77,6 +77,7 @@ export async function renderWeightsPanel() {
         });
       });
     }
+
   } catch (error) {
     list.textContent = `Unable to load attributes: ${error.message}`;
   }
