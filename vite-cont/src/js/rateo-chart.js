@@ -142,8 +142,8 @@ export async function renderRateoChart() {
 
   const applyPointStyles = () => {
     const selections = window.__starSelections || {};
-    const left = selections["star-graph"];
-    const right = selections["star-graph-compare"];
+    const left = selections["star-graph-1"];
+    const right = selections["star-graph-2"];
     const hasTarget = Boolean(getTarget());
     const lineSel = window.__lineSelectedTimestep;
     pointGroup
@@ -188,13 +188,13 @@ export async function renderRateoChart() {
       try {
         await deleteConfiguration(selectedId);
         if (selectedTimestep !== null && selectedTimestep !== undefined) {
-          if (window.__starSelections?.["star-graph"] === selectedTimestep) {
-            delete window.__starSelections["star-graph"];
-            renderStarGraph(null, "star-graph");
+          if (window.__starSelections?.["star-graph-1"] === selectedTimestep) {
+            delete window.__starSelections["star-graph-1"];
+            renderStarGraph(null, "star-graph-1");
           }
-          if (window.__starSelections?.["star-graph-compare"] === selectedTimestep) {
-            delete window.__starSelections["star-graph-compare"];
-            renderStarGraph(null, "star-graph-compare");
+          if (window.__starSelections?.["star-graph-2"] === selectedTimestep) {
+            delete window.__starSelections["star-graph-2"];
+            renderStarGraph(null, "star-graph-2");
           }
         }
         window.__lineSelectedId = null;

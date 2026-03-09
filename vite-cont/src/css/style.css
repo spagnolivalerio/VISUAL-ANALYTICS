@@ -99,7 +99,7 @@ p {
   display: block;
 }
 
-#star-graph {
+#star-graph-1 {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -113,15 +113,24 @@ p {
 }
 
 
-#star-graph[data-selected="true"] {
+#star-graph-1[data-selected="true"] {
   box-shadow: 0 0 0 1px #22c55e;
 }
 
-#star-graph svg {
+#star-graph-1 svg {
   width: 100%;
   height: 100%;
   display: block;
 
+}
+
+.star-graph-1-canvas {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .star-block {
@@ -134,7 +143,7 @@ p {
 }
 
 
-.star-graph-compare {
+.star-graph-2 {
   flex: 0 0 auto;
   border: 0;
   border-radius: 10px;
@@ -145,7 +154,7 @@ p {
   box-sizing: border-box;
 }
 
-#star-graph-compare {
+#star-graph-2 {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -158,11 +167,11 @@ p {
   box-sizing: border-box;
 }
 
-#star-graph-compare[data-selected="true"] {
+#star-graph-2[data-selected="true"] {
   box-shadow: 0 0 0 1px #ef4444;
 }
 
-.star-graph-compare-canvas {
+.star-graph-2-canvas {
   width: 100%;
   height: 100%;
   display: flex;

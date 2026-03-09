@@ -11,7 +11,7 @@ function buildPath(points) {
   return `M ${first.x} ${first.y} ${rest.map((p) => `L ${p.x} ${p.y}`).join(" ")} Z`;
 }
 
-export async function renderStarGraph(weights, targetId = "star-graph") {
+export async function renderStarGraph(weights, targetId) {
   const container = document.getElementById(targetId);
   if (!container) return;
 
