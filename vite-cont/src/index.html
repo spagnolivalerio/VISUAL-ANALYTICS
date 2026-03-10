@@ -26,44 +26,33 @@
           <div id="mds-classic-container" class="plot-container"></div>
         </article>
 
-        <article class="plot-card">
-          <div class="plot-title-row">
-            <h2>Non-Proportional MDS <span id="nonprop-timestep" class="plot-timestep"></span></h2>
-            <button id="toggle-centroids-nonprop" type="button" class="centroid-toggle" aria-pressed="true" aria-label="Toggle centroids">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 5c-5.5 0-9.5 5-9.5 7s4 7 9.5 7 9.5-5 9.5-7-4-7-9.5-7zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>
-              </svg>
-            </button>
-          </div>
-          <div id="mds-non-proportional-container" class="plot-container"></div>
-        </article>
-        
-        <article class="plot-card-weights">
-          <h2 class="weights-header">Weights control panel</h2>
-              <aside id="weights-panel" class="weights-panel">
-                <div class="weights-actions">
-                  <button id="run-nonprop-btn" type="button" class="run-mds-btn">Run MDS</button>
-                  <button id="reset-weights-btn" type="button" class="reset-weights-btn" aria-label="Reset weights">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 12a8 8 0 0 1 13.66-5.66L20 4v6h-6l2.47-2.47A6 6 0 1 0 18 12h2a8 8 0 0 1-16 0z"/>
-                    </svg>
-                  </button>
-                  <p id="nonprop-status" class="weights-status"></p>
-                </div>
-                <div id="weights-list"></div>
-              </aside>
-        </article>
-
-        <div id="mds-classic-metrics" class="metrics-panel">
-            <p>cohesion:</p>
-            <p>separation:</p>
-            <p>ratio:</p>
-        </div>
-        <div id="mds-nonprop-metrics" class="metrics-panel">
-            <p>cohesion:</p>
-            <p>separation:</p>
-            <p>ratio:</p>
-        </div>
+          <article class="plot-card">
+            <div class="plot-title-row">
+              <h2>Non-Proportional MDS <span id="nonprop-timestep" class="plot-timestep"></span></h2>
+              <button id="toggle-centroids-nonprop" type="button" class="centroid-toggle" aria-pressed="true" aria-label="Toggle centroids">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 5c-5.5 0-9.5 5-9.5 7s4 7 9.5 7 9.5-5 9.5-7-4-7-9.5-7zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>
+                </svg>
+              </button>
+            </div>
+            <div id="mds-non-proportional-container" class="plot-container"></div>
+          </article>
+          
+          <article class="plot-card-weights">
+            <h2 class="weights-header">Weights control panel</h2>
+                <aside id="weights-panel" class="weights-panel">
+                  <div class="weights-actions">
+                    <button id="run-nonprop-btn" type="button" class="run-mds-btn">Run MDS</button>
+                    <button id="reset-weights-btn" type="button" class="reset-weights-btn" aria-label="Reset weights">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 12a8 8 0 0 1 13.66-5.66L20 4v6h-6l2.47-2.47A6 6 0 1 0 18 12h2a8 8 0 0 1-16 0z"/>
+                      </svg>
+                    </button>
+                    <p id="nonprop-status" class="weights-status"></p>
+                  </div>
+                  <div id="weights-list"></div>
+                </aside>
+          </article>
 
       </section>
     </main>

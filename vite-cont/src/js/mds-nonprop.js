@@ -4,8 +4,6 @@ import { renderRateoChart } from "./rateo-chart";
 import { renderStarGraph } from "./star-graph";
 
 const MARGIN = { top: 20, right: 20, bottom: 40, left: 46 };
-const MIN_WIDTH = 320;
-const MIN_HEIGHT = 420;
 
 let resizeObserver;
 let lastPoints = [];
@@ -24,17 +22,6 @@ export function renderNonPropFromSaved(points, timestep) {
   }
 }
 
-function truncate3(value) {
-  return Math.trunc(value * 1000) / 1000;
-}
-
-function getPlotSize(container) {
-  const rect = container.getBoundingClientRect();
-  const width = Math.max(MIN_WIDTH, Math.floor(rect.width));
-  const height = Math.max(MIN_HEIGHT, Math.floor(rect.height));
-  return { width, height };
-}
-
 function collectWeights() {
   const sliders = Array.from(document.querySelectorAll("#weights-list input[type='range'][data-attribute]"));
   const weights = {};
@@ -47,13 +34,15 @@ function collectWeights() {
 function drawNonPropMds(container, points, showCentroids) {
   container.classList.remove("plot-placeholder");
   container.innerHTML = "";
-  const { width, height } = getPlotSize(container);
+
+  const rect = container.getBoundingClientRect();
+  const width = Math.max(1, Math.floor(rect.width));
+  const height = Math.max(1, Math.floor(rect.height));
 
   const svg = d3
     .select(container)
     .append("svg")
-    .attr("width", width)
-    .attr("height", height);
+    .attr("viewBox", `0 0 ${width} ${height}`)
 
   const innerWidth = width - MARGIN.left - MARGIN.right;
   const innerHeight = height - MARGIN.top - MARGIN.bottom;
@@ -317,7 +306,6 @@ export function initNonPropMds() {
   const container = document.getElementById("mds-non-proportional-container");
   const runButton = document.getElementById("run-nonprop-btn");
   const status = document.getElementById("nonprop-status");
-  const metricsPanel = document.getElementById("mds-nonprop-metrics");
   const toggleButton = document.getElementById("toggle-centroids-nonprop");
   const timestepLabel = document.getElementById("nonprop-timestep");
 
@@ -379,91 +367,6 @@ export function initNonPropMds() {
       const points = payload.points || [];
       if (!points.length) {
         throw new Error("No points returned.");
-      }
-
-      if (metricsPanel) {
-        const plotLabels = [...new Set(points.map((p) => String(p.class_label)))];
-        const cohesion = payload.cluster_cohesion || {};
-        const separation = payload.cluster_separation || {};
-        const separationByLabelPayload = payload.cluster_separation_by_label || {};
-        const hasMetrics =
-          Object.keys(cohesion).length > 0 &&
-          (Object.keys(separation).length > 0 || Object.keys(separationByLabelPayload).length > 0);
-        if (!hasMetrics) {
-          metricsPanel.innerHTML = `
-            <p>cohesion: -</p>
-            <p>separation: -</p>
-            <p>ratio: 0</p>
-          `;
-        } else {
-
-          const cohesionKeys = new Set(Object.keys(cohesion).map(String));
-          const clusterLabels = plotLabels.filter((label) => cohesionKeys.has(label));
-          const cohesionLabels = clusterLabels.length ? clusterLabels : Array.from(cohesionKeys);
-          const colorDomain = plotLabels.length ? plotLabels : cohesionLabels;
-          const palette = d3.schemeTableau10;
-          const colorMap = new Map(colorDomain.map((label, i) => [label, palette[i % palette.length]]));
-          const getColor = (label) => colorMap.get(String(label)) || palette[0];
-          const separationByCluster = {};
-          if (Object.keys(separationByLabelPayload).length) {
-            for (const label of Object.keys(separationByLabelPayload)) {
-              separationByCluster[String(label)] = [separationByLabelPayload[label]];
-            }
-          } else {
-            for (const key of Object.keys(separation)) {
-              const [a, b] = key.split("-");
-              const sa = String(a);
-              const sb = String(b);
-              if (!separationByCluster[sa]) separationByCluster[sa] = [];
-              if (!separationByCluster[sb]) separationByCluster[sb] = [];
-              separationByCluster[sa].push(separation[key]);
-              separationByCluster[sb].push(separation[key]);
-            }
-          }
-
-          const format = (value) => Number(value).toFixed(3);
-          const cohesionLines = cohesionLabels
-            .map(
-              (label) => `
-                <span class="cluster-swatch" style="background:${getColor(label)}"></span>
-                <span>${format(cohesion[label])}</span>
-              `
-            )
-            .join(" ");
-
-          const separationPairs = Object.keys(separation)
-            .map((key) => {
-              const [a, b] = key.split("-");
-              const sa = String(a);
-              const sb = String(b);
-              return `
-                <span class="cluster-swatch" style="background:${getColor(sa)}"></span>
-                <span class="cluster-swatch" style="background:${getColor(sb)}"></span>
-                <span>${format(separation[key])}</span>
-              `;
-            })
-            .join(" ");
-
-          const cohesionValues = cohesionLabels.map((label) => Number(cohesion[label]) || 0);
-          const meanCohesion =
-            cohesionValues.length
-              ? cohesionValues.reduce((sum, v) => sum + v, 0) / cohesionValues.length
-              : 0;
-
-          const separationValues = Object.keys(separation).map((key) => Number(separation[key]) || 0);
-          const meanSeparation =
-            separationValues.length
-              ? separationValues.reduce((sum, v) => sum + v, 0) / separationValues.length
-              : 0;
-
-          ratioValue = meanSeparation ? truncate3(meanCohesion / meanSeparation) : 0;
-
-          metricsPanel.innerHTML = `
-            <div class="metric-line"><span class="metric-label">cohesion:</span> ${cohesionLines || "-"}</div>
-            <div class="metric-line"><span class="metric-label">separation:</span> ${separationPairs || "-"}</div>
-            <div class="metric-line"><span class="metric-label">ratio:</span> ${format(ratioValue)}</div>
-          `;
-        }
       }
 
       lastPoints = points;

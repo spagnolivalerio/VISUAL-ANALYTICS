@@ -1,28 +1,20 @@
 import * as d3 from "d3";
 
 const MARGIN = { top: 20, right: 20, bottom: 40, left: 46 };
-const MIN_WIDTH = 320;
-const MIN_HEIGHT = 420;
 
 let resizeObserver;
-
-function getPlotSize(container) {
-  const rect = container.getBoundingClientRect();
-  const width = Math.max(MIN_WIDTH, Math.floor(rect.width));
-  const height = Math.max(MIN_HEIGHT, Math.floor(rect.height));
-  return { width, height };
-}
 
 function drawClassicMds(container, points, showCentroids) {
   container.innerHTML = "";
 
-  const { width, height } = getPlotSize(container);
+  const rect = container.getBoundingClientRect();
+  const width = Math.max(1, Math.floor(rect.width));
+  const height = Math.max(1, Math.floor(rect.height));
 
   const svg = d3
     .select(container)
     .append("svg")
-    .attr("width", width)
-    .attr("height", height);
+    .attr("viewBox", `0 0 ${width} ${height}`)
 
   const innerWidth = width - MARGIN.left - MARGIN.right;
   const innerHeight = height - MARGIN.top - MARGIN.bottom;
@@ -264,7 +256,6 @@ function drawClassicMds(container, points, showCentroids) {
 
 export async function renderClassicMds() {
   const container = document.getElementById("mds-classic-container");
-  const metricsPanel = document.getElementById("mds-classic-metrics");
   const toggleButton = document.getElementById("toggle-centroids-classic");
   if (!container) {
     return;
@@ -309,84 +300,6 @@ export async function renderClassicMds() {
     if (!points.length) {
       container.textContent = "No points returned.";
       return;
-    }
-
-    if (metricsPanel) {
-      const plotLabels = [...new Set(points.map((p) => String(p.class_label)))];
-      console.log("Plot labels:", plotLabels);
-      const cohesion = payload.cluster_cohesion || {};
-      const separation = payload.cluster_separation || {};
-      const cohesionKeys = new Set(Object.keys(cohesion).map(String));
-      const hasCohesion = Object.keys(cohesion).length > 0;
-      const hasSeparation = Object.keys(separation).length > 0;
-      if (!hasCohesion && !hasSeparation) {
-        metricsPanel.innerHTML = `
-          <p>cohesion: -</p>
-          <p>separation: -</p>
-          <p>ratio: 0</p>
-        `;
-      } else {
-        const clusterLabels = plotLabels.filter((label) => cohesionKeys.has(label));
-        const cohesionLabels = clusterLabels.length ? clusterLabels : Array.from(cohesionKeys);
-        console.log("Cohesion labels:", cohesionLabels);
-        const colorDomain = plotLabels.length ? plotLabels : Int16Array.from(cohesionLabels, Number);
-        console.log("Color domain:", colorDomain);
-        const palette = d3.schemeTableau10;
-        console.log("Color palette:", palette);
-        const colorMap = new Map(
-          colorDomain.map((label, i) => [String(label), palette[i % palette.length]])
-        );
-        console.log("Color map:", colorMap);
-        const getColor = (label) => colorMap.get(String(Math.trunc(label))) || palette[0];
-
-        const format = (value) => Number(value).toFixed(3);
-        const cohesionLines = hasCohesion
-          ? cohesionLabels
-              .map(
-                (label) => `
-                  <span class="cluster-swatch" style="background:${getColor(label)}"></span>
-                  <span>${format(cohesion[label])}</span>
-                `
-              )
-              .join(" ")
-          : "-";
-
-        const separationPairs = hasSeparation
-          ? Object.keys(separation)
-              .map((key) => {
-                const [a, b] = key.split("-");
-                const sa = String(a);
-                const sb = String(b);
-                return `
-                  <span class="cluster-swatch" style="background:${getColor(sa)}"></span>
-                  <span class="cluster-swatch" style="background:${getColor(sb)}"></span>
-                  <span>${format(separation[key])}</span>
-                `;
-              })
-              .join(" ")
-          : "-";
-
-        const cohesionValues = cohesionLabels.map((label) => Number(cohesion[label]) || 0);
-        console.log("Cohesion by label:", cohesion);
-        console.log("Cohesion values:", cohesionValues);
-        const meanCohesion =
-          cohesionValues.length
-            ? cohesionValues.reduce((sum, v) => sum + v, 0) / cohesionValues.length
-            : 0;
-
-        const separationValues = Object.keys(separation).map((key) => Number(separation[key]) || 0);
-        const meanSeparation =
-          separationValues.length
-            ? separationValues.reduce((sum, v) => sum + v, 0) / separationValues.length
-            : 0;
-
-        const ratio = meanSeparation ? meanCohesion / meanSeparation : 0;
-        metricsPanel.innerHTML = `
-          <div class="metric-line"><span class="metric-label">cohesion:</span> ${cohesionLines}</div>
-          <div class="metric-line"><span class="metric-label">separation:</span> ${separationPairs}</div>
-          <div class="metric-line"><span class="metric-label">ratio:</span> ${format(ratio)}</div>
-        `;
-      }
     }
 
     drawClassicMds(container, points, container.dataset.showCentroids === "true");
