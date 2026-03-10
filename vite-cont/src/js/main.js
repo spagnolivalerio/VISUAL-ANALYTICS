@@ -6,6 +6,8 @@ import { renderStarGraph } from "./star-graph";
 import { setupStarSelection } from "./star-selection";
 import { syncWeights } from "./mds-nonprop";
 
+
+
 initNonPropMds();
 renderClassicMds();
 renderWeightsPanel(null);

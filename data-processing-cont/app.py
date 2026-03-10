@@ -84,6 +84,13 @@ def compute_ratio(cohesion, separation):
 def health():
     return jsonify(status="ok"), 200
 
+@app.get("/datasets")
+def list_datasets():
+    if not DATA_PATH.exists():
+        return jsonify(datasets=[]), 200
+    datasets = sorted([p.name for p in DATA_PATH.iterdir() if p.is_file()])
+    return jsonify(datasets=datasets), 200
+
 @app.post("/mds-classic")
 def mds_classic():
 
