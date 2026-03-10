@@ -4,9 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MDS Scatterplots</title>
-    <link rel="stylesheet" href="css/style.css"> 
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/sidebar.css">
   </head>
   <body>
+
+    <button class="sidebar-toggle" id="menu-button" type="button" aria-controls="app-sidebar" aria-expanded="false">
+      Menu
+    </button>
+    <aside id="app-sidebar" class="sidebar" aria-hidden="true">
+      <div class="sidebar-header">
+        <h2>Menu</h2>
+        <button class="sidebar-close" type="button" aria-label="Close menu">×</button>
+      </div>
+      <nav class="sidebar-nav" id="nav">
+        <div class="sidebar-section">
+          <h3>Datasets</h3>
+          <ul id="datasets-list"></ul>
+        </div>
+        <div class="sidebar-section">
+          <h3>Attributes</h3>
+          <ul id="attributes-list"></ul>
+        </div>
+      </nav>
+    </aside>
+    <div class="sidebar-backdrop" aria-hidden="true"></div>
+
     <main class="page-wrap">
       <header class="page-header">
         <h1>Wine MDS Visualization</h1>
@@ -85,5 +108,6 @@
     </section>
 
     <script type="module" src="./js/main.js"></script>
+    <script type="module" src="./js/sidebar.js"></script>
   </body>
 </html>

@@ -4,6 +4,18 @@ const MARGIN = { top: 20, right: 20, bottom: 40, left: 46 };
 
 let resizeObserver;
 
+async function restRequest(dataset, clusterAttr) {
+  const payload = {};
+  if (dataset) payload.dataset = dataset;
+  if (clusterAttr) payload.cluster_attr = clusterAttr;
+
+  return fetch("/api/mds-classic", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 function drawClassicMds(container, points, showCentroids) {
   container.innerHTML = "";
 
@@ -254,7 +266,7 @@ function drawClassicMds(container, points, showCentroids) {
   window.addEventListener("mds:point", onPoint);
 }
 
-export async function renderClassicMds() {
+export async function renderClassicMds(dataset, cluster_attr) {
   const container = document.getElementById("mds-classic-container");
   const toggleButton = document.getElementById("toggle-centroids-classic");
   if (!container) {
@@ -283,7 +295,7 @@ export async function renderClassicMds() {
   container.textContent = "Loading MDS classic points...";
 
   try {
-    const response = await fetch("/api/mds-classic", { method: "POST" });
+    const response = await restRequest(dataset, cluster_attr)
     console.log(response)
     const contentType = response.headers.get("content-type") || "";
 

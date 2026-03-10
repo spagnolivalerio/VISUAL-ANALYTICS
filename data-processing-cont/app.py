@@ -84,7 +84,7 @@ def compute_ratio(cohesion, separation):
 def health():
     return jsonify(status="ok"), 200
 
-@app.get("/datasets")
+@app.get("/dataset")
 def list_datasets():
     if not DATA_PATH.exists():
         return jsonify(datasets=[]), 200
@@ -103,7 +103,7 @@ def mds_classic():
         cluster_attr = payload["cluster_attr"]
         dataset = DATA_PATH / payload["dataset"]
 
-    df = pd.read_csv(dataset, sep=";", decimal=",")
+    df = pd.read_csv(dataset, sep=None, engine="python", decimal=",")
     if cluster_attr not in df.columns:
         return jsonify(error=f"Unknown cluster_attr '{cluster_attr}'"), 400
     features = df.drop(columns=[cluster_attr])
@@ -191,7 +191,7 @@ def numeric_attributes():
         cluster_attr = payload["cluster_attr"]
         dataset = DATA_PATH / payload["dataset"]
     
-    df = pd.read_csv(dataset, sep=";", decimal=",")
+    df = pd.read_csv(dataset, sep=None, engine="python", decimal=",")
     feature_df = df.drop(columns=[cluster_attr], errors="ignore")
     numeric_attributes = feature_df.select_dtypes(include="number").columns.tolist()
 
@@ -207,7 +207,7 @@ def get_attributes():
     else: 
         return jsonify({"error": "missing dataset"}), 400
     
-    df = pd.read_csv(dataset, sep=";", decimal=",")
+    df = pd.read_csv(dataset, sep=None, engine="python", decimal=",")
     attributes = df.columns.tolist()
 
     return jsonify(
@@ -229,7 +229,7 @@ def mds_nonprop():
         cluster_attr = payload["cluster_attr"]
         dataset = DATA_PATH / payload["dataset"]
 
-    df = pd.read_csv(dataset, sep=";", decimal=",")
+    df = pd.read_csv(dataset, sep=None, engine="python", decimal=",")
     features = df.drop(columns=[cluster_attr], errors="ignore")
     numeric_features = features.select_dtypes(include="number")
     attributes = numeric_features.columns.tolist()

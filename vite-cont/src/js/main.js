@@ -6,10 +6,11 @@ import { renderStarGraph } from "./star-graph";
 import { setupStarSelection } from "./star-selection";
 import { syncWeights } from "./mds-nonprop";
 
-
+let dataset = localStorage.getItem("dataset")
+let cluster_attr = localStorage.getItem("cluster_attr")
 
 initNonPropMds();
-renderClassicMds();
+renderClassicMds(dataset, cluster_attr);
 renderWeightsPanel(null);
 renderRateoChart();
 renderStarGraph(null, "star-graph-1");
