@@ -192,6 +192,21 @@ def numeric_attributes():
         numeric_attributes=numeric_attributes,
     ), 200
 
+@app.post("/all_attributes")
+def get_attributes():
+    payload = request.get_json(silent=True) or {}
+    if payload["dataset"]:
+        dataset = DATA_PATH / payload["dataset"]
+    else: 
+        return jsonify({"error": "missing dataset"}), 400
+    
+    df = pd.read_csv(dataset, sep=";", decimal=",")
+    attributes = df.columns.tolist()
+
+    return jsonify(
+        attributes=attributes,
+    ), 200
+
 @app.post("/mds-nonprop")
 def mds_nonprop():
     
