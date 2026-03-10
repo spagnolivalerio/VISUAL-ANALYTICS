@@ -2,6 +2,9 @@ import * as d3 from "d3";
 import { saveConfiguration } from "./config-store";
 import { renderRateoChart } from "./rateo-chart";
 import { renderStarGraph } from "./star-graph";
+import { getConfigurationById } from "./config-store";
+import { renderWeightsPanel } from "./weights-panel";
+
 
 const MARGIN = { top: 20, right: 20, bottom: 40, left: 46 };
 
@@ -29,6 +32,30 @@ function collectWeights() {
     weights[slider.dataset.attribute] = Number(slider.value);
   }
   return weights;
+}
+
+export async function syncWeights() {
+  const syncButtons = document.querySelectorAll(".sync-btn[data-target]");
+  syncButtons.forEach((btn) => {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const targetId = btn.dataset.target;
+      const selections = window.__starSelections || {};
+      const timestep = selections[targetId];
+      if (timestep === undefined) {
+        return;
+      }
+      const selectedId = window.__starSelectionsId?.[targetId];
+      if (!selectedId) {
+        return;
+      }
+      const config = await getConfigurationById(selectedId);
+      if (config?.points?.length) {
+        renderNonPropFromSaved(config.points, config.timestep);
+        renderWeightsPanel(config?.weights)
+      }
+    });
+  });
 }
 
 function drawNonPropMds(container, points, showCentroids) {
