@@ -9,9 +9,9 @@ import { syncWeights } from "./mds-nonprop";
 let dataset = localStorage.getItem("dataset")
 let cluster_attr = localStorage.getItem("cluster_attr")
 
-initNonPropMds();
+initNonPropMds(dataset, cluster_attr);
 renderClassicMds(dataset, cluster_attr);
-renderWeightsPanel(null);
+renderWeightsPanel(null, dataset, cluster_attr);
 renderRateoChart();
 renderStarGraph(null, "star-graph-1");
 renderStarGraph(null, "star-graph-2");

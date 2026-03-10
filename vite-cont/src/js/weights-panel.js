@@ -47,7 +47,19 @@ function buildWeightRowWrapper(list, weightsList, attributes){
   }
 }
 
-export async function renderWeightsPanel(weightsList) {
+async function restRequest(dataset, clusterAttr) {
+  const payload = {};
+  if (dataset) payload.dataset = dataset;
+  if (clusterAttr) payload.cluster_attr = clusterAttr;
+
+  return fetch("/api/numeric-attributes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function renderWeightsPanel(weightsList, dataset, cluster_attr) {
   const list = document.getElementById("weights-list");
   const resetButton = document.getElementById("reset-weights-btn");
   if (!list) {
@@ -57,7 +69,7 @@ export async function renderWeightsPanel(weightsList) {
   list.textContent = "Loading attributes...";
 
   try {
-    const response = await fetch("/api/numeric-attributes", { method: "POST" });
+    const response = await restRequest(dataset, cluster_attr)
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
       const body = await response.text();

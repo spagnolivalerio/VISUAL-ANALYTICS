@@ -296,7 +296,6 @@ export async function renderClassicMds(dataset, cluster_attr) {
 
   try {
     const response = await restRequest(dataset, cluster_attr)
-    console.log(response)
     const contentType = response.headers.get("content-type") || "";
 
     if (!contentType.includes("application/json")) {

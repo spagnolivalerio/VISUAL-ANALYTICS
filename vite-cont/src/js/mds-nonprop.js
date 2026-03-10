@@ -5,6 +5,18 @@ import { renderStarGraph } from "./star-graph";
 import { getConfigurationById } from "./config-store";
 import { renderWeightsPanel } from "./weights-panel";
 
+async function restRequest(weights, dataset, clusterAttr) {
+  const payload = {};
+  if (dataset) payload.dataset = dataset;
+  if (clusterAttr) payload.cluster_attr = clusterAttr;
+  if (weights) payload.weights = weights;
+
+  return fetch("/api/mds-nonprop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
 
 const MARGIN = { top: 20, right: 20, bottom: 40, left: 46 };
 
@@ -330,7 +342,7 @@ function drawNonPropMds(container, points, showCentroids) {
   }
 }
 
-export function initNonPropMds() {
+export function initNonPropMds(dataset, cluster_attr) {
   const container = document.getElementById("mds-non-proportional-container");
   const runButton = document.getElementById("run-nonprop-btn");
   const status = document.getElementById("nonprop-status");
@@ -375,11 +387,7 @@ export function initNonPropMds() {
 
     let ratioValue = null;
     try {
-      const response = await fetch("/api/mds-nonprop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ weights }),
-      });
+      const response = await restRequest(weights, dataset, cluster_attr)
 
       const contentType = response.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) {
