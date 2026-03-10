@@ -24,6 +24,32 @@ def build_precomputed_mds(**kwargs):
         return build_mds(metric="precomputed", **kwargs)
     except (TypeError, ValueError):
         return build_mds(dissimilarity="precomputed", **kwargs)
+    
+def avg_pairwise_distance(items_a, items_b=None):
+        if items_b is None:
+            n = len(items_a)
+            if n < 2:
+                return 0.0
+            total = 0.0
+            count = 0
+            for i in range(n):
+                for j in range(i + 1, n):
+                    dx = items_a[i]["x"] - items_a[j]["x"]
+                    dy = items_a[i]["y"] - items_a[j]["y"]
+                    total += (dx * dx + dy * dy) ** 0.5
+                    count += 1
+            return total / count
+        if not items_a or not items_b:
+            return 0.0
+        total = 0.0
+        count = 0
+        for a in items_a:
+            for b in items_b:
+                dx = a["x"] - b["x"]
+                dy = a["y"] - b["y"]
+                total += (dx * dx + dy * dy) ** 0.5
+                count += 1
+        return total / count
 
 def parse_weights(weights_payload, attributes):
     if isinstance(weights_payload, list):
@@ -44,6 +70,16 @@ def parse_weights(weights_payload, attributes):
         raise ValueError("'weights' values must be between 0 and 1")
     return weights
 
+def compute_ratio(cohesion, separation):
+    cohesion_values = [float(v) for v in cohesion.values() if v is not None]
+    separation_values = [float(v) for v in separation.values() if v is not None]
+    if not cohesion_values or not separation_values:
+        return 0.0
+    mean_cohesion = float(np.mean(cohesion_values))
+    mean_separation = float(np.mean(separation_values))
+    if mean_separation == 0:
+        return 0.0
+    return mean_cohesion / mean_separation
 
 @app.get("/health")
 def health():
@@ -115,12 +151,15 @@ def mds_classic():
                 avg_pairwise_distance(cluster_points[label_a], cluster_points[label_b])
             )
 
+    ratio = compute_ratio(cohesion, separation)
+
     return jsonify(
         count=len(points),
         stress=float(mds.stress_),
         label_col=label_col,
         cluster_cohesion=cohesion,
         cluster_separation=separation,
+        ratio=ratio,
         points=points,
     ), 200
 
@@ -185,32 +224,6 @@ def mds_nonprop():
     for point in points:
         cluster_points.setdefault(point["class_label"], []).append(point)
 
-    def avg_pairwise_distance(items_a, items_b=None):
-        if items_b is None:
-            n = len(items_a)
-            if n < 2:
-                return 0.0
-            total = 0.0
-            count = 0
-            for i in range(n):
-                for j in range(i + 1, n):
-                    dx = items_a[i]["x"] - items_a[j]["x"]
-                    dy = items_a[i]["y"] - items_a[j]["y"]
-                    total += (dx * dx + dy * dy) ** 0.5
-                    count += 1
-            return total / count
-        if not items_a or not items_b:
-            return 0.0
-        total = 0.0
-        count = 0
-        for a in items_a:
-            for b in items_b:
-                dx = a["x"] - b["x"]
-                dy = a["y"] - b["y"]
-                total += (dx * dx + dy * dy) ** 0.5
-                count += 1
-        return total / count
-
     cohesion = {
         str(label): float(avg_pairwise_distance(items))
         for label, items in cluster_points.items()
@@ -225,6 +238,8 @@ def mds_nonprop():
                 avg_pairwise_distance(cluster_points[label_a], cluster_points[label_b])
             )
 
+    ratio = compute_ratio(cohesion, separation)
+
     return jsonify(
         count=len(points),
         stress=float(mds.stress_),
@@ -233,9 +248,10 @@ def mds_nonprop():
         weights=weights.tolist(),
         cluster_cohesion=cohesion,
         cluster_separation=separation,
+        ratio=ratio,
         points=points,
     ), 200
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)

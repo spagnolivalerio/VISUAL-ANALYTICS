@@ -365,6 +365,7 @@ export function initNonPropMds() {
       }
 
       const points = payload.points || [];
+      ratioValue = Number.isFinite(Number(payload.ratio)) ? Number(payload.ratio) : 0;
       if (!points.length) {
         throw new Error("No points returned.");
       }
