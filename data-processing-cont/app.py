@@ -7,11 +7,10 @@ from sklearn.manifold import MDS
 from sklearn.preprocessing import StandardScaler
 
 BASE_DIR = Path(__file__).resolve().parent
-WINE_PATH = BASE_DIR / "data" / "wine.csv"
-LABEL_COL = "Class label"
+DATA_PATH = BASE_DIR / "data" 
+WINE_PATH = DATA_PATH / "wine.csv"
 
 app = Flask(__name__)
-
 
 def build_mds(**kwargs):
     try:
@@ -85,11 +84,22 @@ def compute_ratio(cohesion, separation):
 def health():
     return jsonify(status="ok"), 200
 
-@app.get("/mds-classic")
+@app.post("/mds-classic")
 def mds_classic():
-    df = pd.read_csv(WINE_PATH, sep=";", decimal=",")
-    label_col = LABEL_COL if LABEL_COL in df.columns else df.columns[0]
-    features = df.drop(columns=[label_col])
+
+    payload = request.get_json(silent=True) or {}
+    required_attr = ["cluster_attr", "dataset"]
+    if not all(k in payload for k in required_attr):
+        cluster_attr = "Class label"
+        dataset = WINE_PATH
+    else:
+        cluster_attr = payload["cluster_attr"]
+        dataset = DATA_PATH / payload["dataset"]
+
+    df = pd.read_csv(dataset, sep=";", decimal=",")
+    if cluster_attr not in df.columns:
+        return jsonify(error=f"Unknown cluster_attr '{cluster_attr}'"), 400
+    features = df.drop(columns=[cluster_attr])
     scaled = StandardScaler().fit_transform(features)
 
     mds = build_mds(n_components=2, metric=True, random_state=200)
@@ -100,7 +110,7 @@ def mds_classic():
             "id": int(i + 1),
             "x": float(embedding[i, 0]),
             "y": float(embedding[i, 1]),
-            "class_label": df.iloc[i][label_col],
+            "class_label": df.iloc[i][cluster_attr],
         }
         for i in range(len(df))
     ]
@@ -142,7 +152,7 @@ def mds_classic():
     }
 
     separation = {}
-    label_values = df[label_col].tolist()
+    label_values = df[cluster_attr].tolist()
     labels = list(dict.fromkeys(label_values))
     for i, label_a in enumerate(labels):
         for label_b in labels[i + 1 :]:
@@ -156,18 +166,26 @@ def mds_classic():
     return jsonify(
         count=len(points),
         stress=float(mds.stress_),
-        label_col=label_col,
+        cluster_attr=cluster_attr,
         cluster_cohesion=cohesion,
         cluster_separation=separation,
         ratio=ratio,
         points=points,
     ), 200
 
-@app.get("/numeric-attributes")
+@app.post("/numeric-attributes")
 def numeric_attributes():
-    df = pd.read_csv(WINE_PATH, sep=";", decimal=",")
-    label_col = LABEL_COL if LABEL_COL in df.columns else df.columns[0]
-    feature_df = df.drop(columns=[label_col], errors="ignore")
+    payload = request.get_json(silent=True) or {}
+    required_attr = ["cluster_attr", "dataset"]
+    if not all(k in payload for k in required_attr):
+        cluster_attr = "Class label"
+        dataset = WINE_PATH
+    else:
+        cluster_attr = payload["cluster_attr"]
+        dataset = DATA_PATH / payload["dataset"]
+    
+    df = pd.read_csv(dataset, sep=";", decimal=",")
+    feature_df = df.drop(columns=[cluster_attr], errors="ignore")
     numeric_attributes = feature_df.select_dtypes(include="number").columns.tolist()
 
     return jsonify(
@@ -176,14 +194,21 @@ def numeric_attributes():
 
 @app.post("/mds-nonprop")
 def mds_nonprop():
+    
     payload = request.get_json(silent=True) or {}
     weights_payload = payload.get("weights")
     if weights_payload is None:
         return jsonify(error="Missing JSON field 'weights'"), 400
+    required_attr = ["cluster_attr", "dataset"]
+    if not all(k in payload for k in required_attr):
+        cluster_attr = "Class label"
+        dataset = WINE_PATH
+    else:
+        cluster_attr = payload["cluster_attr"]
+        dataset = DATA_PATH / payload["dataset"]
 
-    df = pd.read_csv(WINE_PATH, sep=";", decimal=",")
-    label_col = LABEL_COL if LABEL_COL in df.columns else df.columns[0]
-    features = df.drop(columns=[label_col], errors="ignore")
+    df = pd.read_csv(dataset, sep=";", decimal=",")
+    features = df.drop(columns=[cluster_attr], errors="ignore")
     numeric_features = features.select_dtypes(include="number")
     attributes = numeric_features.columns.tolist()
 
@@ -207,7 +232,7 @@ def mds_nonprop():
     mds = build_precomputed_mds(n_components=2, random_state=200)
     embedding = mds.fit_transform(dissimilarities)
 
-    label_values = df[label_col].tolist()
+    label_values = df[cluster_attr].tolist()
     points = []
     for i in range(n_samples):
         points.append(
@@ -243,7 +268,7 @@ def mds_nonprop():
     return jsonify(
         count=len(points),
         stress=float(mds.stress_),
-        label_col=label_col,
+        cluster_attr=cluster_attr,
         attributes=attributes,
         weights=weights.tolist(),
         cluster_cohesion=cohesion,

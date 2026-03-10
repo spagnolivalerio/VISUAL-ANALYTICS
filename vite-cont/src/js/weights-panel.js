@@ -57,7 +57,7 @@ export async function renderWeightsPanel(weightsList) {
   list.textContent = "Loading attributes...";
 
   try {
-    const response = await fetch("/api/numeric-attributes");
+    const response = await fetch("/api/numeric-attributes", { method: "POST" });
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
       const body = await response.text();

@@ -283,7 +283,8 @@ export async function renderClassicMds() {
   container.textContent = "Loading MDS classic points...";
 
   try {
-    const response = await fetch("/api/mds-classic");
+    const response = await fetch("/api/mds-classic", { method: "POST" });
+    console.log(response)
     const contentType = response.headers.get("content-type") || "";
 
     if (!contentType.includes("application/json")) {
