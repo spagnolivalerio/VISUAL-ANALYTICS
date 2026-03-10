@@ -32,6 +32,7 @@ function collectWeights() {
 }
 
 function drawNonPropMds(container, points, showCentroids) {
+  
   container.classList.remove("plot-placeholder");
   container.innerHTML = "";
 
