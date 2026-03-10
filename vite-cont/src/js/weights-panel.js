@@ -35,7 +35,19 @@ function buildWeightRow(attributeName, initialValue = 1) {
   return row;
 }
 
-export async function renderWeightsPanel() {
+function buildWeightRowWrapper(list, weightsList, attributes){
+  if (weightsList == null){
+  for (const attributeName of attributes) {
+      list.appendChild(buildWeightRow(attributeName, 1));
+    }
+  } else {
+    for (const attributeName of attributes) {
+      list.appendChild(buildWeightRow(attributeName, weightsList[attributeName]));
+    }
+  }
+}
+
+export async function renderWeightsPanel(weightsList) {
   const list = document.getElementById("weights-list");
   const resetButton = document.getElementById("reset-weights-btn");
   if (!list) {
@@ -64,9 +76,7 @@ export async function renderWeightsPanel() {
     }
 
     list.innerHTML = "";
-    for (const attributeName of attributes) {
-      list.appendChild(buildWeightRow(attributeName, 1));
-    }
+    buildWeightRowWrapper(list, weightsList, attributes)
 
     if (resetButton) {
       resetButton.addEventListener("click", () => {

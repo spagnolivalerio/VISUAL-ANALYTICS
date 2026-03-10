@@ -9,7 +9,7 @@ import { renderNonPropFromSaved } from "./mds-nonprop";
 
 initNonPropMds();
 renderClassicMds();
-renderWeightsPanel();
+renderWeightsPanel(null);
 renderRateoChart();
 renderStarGraph(null, "star-graph-1");
 renderStarGraph(null, "star-graph-2");
@@ -32,6 +32,7 @@ syncButtons.forEach((btn) => {
     const config = await getConfigurationById(selectedId);
     if (config?.points?.length) {
       renderNonPropFromSaved(config.points, config.timestep);
+      renderWeightsPanel(config?.weights)
     }
   });
 });
