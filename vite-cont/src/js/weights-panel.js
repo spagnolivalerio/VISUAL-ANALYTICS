@@ -1,5 +1,37 @@
+import { getCurrentContext } from "./app-context";
+
 function formatWeight(value) {
   return Number(value).toFixed(2).replace(/\.00$/, "");
+}
+
+function normalizeWeightValue(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 1;
+  }
+  return Math.max(0, Math.min(1, numeric));
+}
+
+function getWeightsList() {
+  return document.getElementById("weights-list");
+}
+
+function getResetButton() {
+  return document.getElementById("reset-weights-btn");
+}
+
+function getSliderElements() {
+  const list = getWeightsList();
+  if (!list) {
+    return [];
+  }
+  return Array.from(list.querySelectorAll("input[type='range'][data-attribute]"));
+}
+
+function setSliderValue(slider, nextValue) {
+  const normalized = normalizeWeightValue(nextValue);
+  slider.value = String(normalized);
+  slider.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function buildWeightRow(attributeName, initialValue = 1) {
@@ -20,7 +52,7 @@ function buildWeightRow(attributeName, initialValue = 1) {
   slider.min = "0";
   slider.max = "1";
   slider.step = "0.25";
-  slider.value = String(initialValue);
+  slider.value = String(normalizeWeightValue(initialValue));
   slider.id = `weight-${safeId}`;
   slider.className = "weight-slider";
   slider.dataset.attribute = attributeName;
@@ -35,18 +67,6 @@ function buildWeightRow(attributeName, initialValue = 1) {
   return row;
 }
 
-function buildWeightRowWrapper(list, weightsList, attributes){
-  if (weightsList == null){
-  for (const attributeName of attributes) {
-      list.appendChild(buildWeightRow(attributeName, 1));
-    }
-  } else {
-    for (const attributeName of attributes) {
-      list.appendChild(buildWeightRow(attributeName, weightsList[attributeName]));
-    }
-  }
-}
-
 async function restRequest(dataset, clusterAttr) {
   const payload = {};
   if (dataset) payload.dataset = dataset;
@@ -59,17 +79,99 @@ async function restRequest(dataset, clusterAttr) {
   });
 }
 
-export async function renderWeightsPanel(weightsList, dataset, cluster_attr) {
-  const list = document.getElementById("weights-list");
-  const resetButton = document.getElementById("reset-weights-btn");
+export function getWeightsFromPanel() {
+  const sliders = getSliderElements();
+  return sliders.reduce((weights, slider) => {
+    weights[slider.dataset.attribute] = Number(slider.value);
+    return weights;
+  }, {});
+}
+
+export function applyWeightsToPanel(weights) {
+  if (!weights || typeof weights !== "object") {
+    return false;
+  }
+
+  const sliders = getSliderElements();
+  if (!sliders.length) {
+    return false;
+  }
+
+  const attributes = sliders.map((slider) => slider.dataset.attribute);
+  const hasAllAttributes = attributes.every((attribute) => Object.prototype.hasOwnProperty.call(weights, attribute));
+  if (!hasAllAttributes) {
+    return false;
+  }
+
+  sliders.forEach((slider) => {
+    setSliderValue(slider, weights[slider.dataset.attribute]);
+  });
+  return true;
+}
+
+export function resetWeightsPanel() {
+  getSliderElements().forEach((slider) => {
+    setSliderValue(slider, 1);
+  });
+}
+
+function bindResetButton() {
+  const resetButton = getResetButton();
+  if (!resetButton || resetButton.dataset.bound === "true") {
+    return;
+  }
+
+  resetButton.addEventListener("click", () => {
+    resetWeightsPanel();
+  });
+  resetButton.dataset.bound = "true";
+}
+
+function setPanelContext(dataset, clusterAttr, attributes) {
+  const list = getWeightsList();
   if (!list) {
     return;
   }
 
+  list.dataset.dataset = dataset || "";
+  list.dataset.clusterAttr = clusterAttr || "";
+  list.dataset.attributes = JSON.stringify(attributes || []);
+}
+
+export function getRenderedPanelContext() {
+  const list = getWeightsList();
+  if (!list) {
+    return null;
+  }
+
+  let attributes = [];
+  try {
+    attributes = JSON.parse(list.dataset.attributes || "[]");
+  } catch (error) {
+    attributes = [];
+  }
+
+  return {
+    dataset: list.dataset.dataset || null,
+    clusterAttr: list.dataset.clusterAttr || null,
+    attributes,
+  };
+}
+
+export async function renderWeightsPanel(weights = null, datasetArg, clusterAttrArg) {
+  const list = getWeightsList();
+  if (!list) {
+    return;
+  }
+
+  const context = getCurrentContext();
+  const dataset = datasetArg ?? context.dataset;
+  const clusterAttr = clusterAttrArg ?? context.clusterAttr;
+
   list.textContent = "Loading attributes...";
 
   try {
-    const response = await restRequest(dataset, cluster_attr)
+    const response = await restRequest(dataset, clusterAttr);
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
       const body = await response.text();
@@ -81,26 +183,22 @@ export async function renderWeightsPanel(weightsList, dataset, cluster_attr) {
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
 
-    const attributes = payload.numeric_attributes || [];
+    const attributes = Array.isArray(payload.numeric_attributes) ? payload.numeric_attributes : [];
     if (!attributes.length) {
       list.textContent = "No numeric attributes found.";
+      setPanelContext(dataset, clusterAttr, []);
       return;
     }
 
     list.innerHTML = "";
-    buildWeightRowWrapper(list, weightsList, attributes)
-
-    if (resetButton) {
-      resetButton.addEventListener("click", () => {
-        const sliders = list.querySelectorAll("input[type='range'][data-attribute]");
-        sliders.forEach((slider) => {
-          slider.value = "1";
-          slider.dispatchEvent(new Event("input", { bubbles: true }));
-        });
-      });
-    }
-
+    attributes.forEach((attributeName) => {
+      const initialValue = weights && Object.prototype.hasOwnProperty.call(weights, attributeName) ? weights[attributeName] : 1;
+      list.appendChild(buildWeightRow(attributeName, initialValue));
+    });
+    setPanelContext(dataset, clusterAttr, attributes);
+    bindResetButton();
   } catch (error) {
     list.textContent = `Unable to load attributes: ${error.message}`;
+    setPanelContext(dataset, clusterAttr, []);
   }
 }

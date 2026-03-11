@@ -1,5 +1,18 @@
 import * as d3 from "d3";
-import { deleteConfiguration, getAllConfigurations, getCurrentSessionId } from "./config-store";
+import { getCurrentContext } from "./app-context";
+import {
+  assignConfigurationToStar,
+  clearAssignmentsIfMissing,
+  clearAssignedConfiguration,
+  clearInvalidAssignments,
+  clearSelectionIfMissing,
+  getAssignedConfiguration,
+  getAssignedTimestep,
+  getLineSelectionId,
+  getStarTarget,
+  setLineSelection,
+} from "./config-selection";
+import { deleteConfiguration, getConfigurationsForContext } from "./config-store";
 import { renderStarGraph } from "./star-graph";
 
 const HEIGHT = 220;
@@ -9,39 +22,56 @@ function truncate3(value) {
   return Math.trunc(value * 1000) / 1000;
 }
 
+function getDeleteButton() {
+  return document.getElementById("delete-config-btn");
+}
+
+function refreshStarGraphs() {
+  const left = getAssignedConfiguration("star-graph-1");
+  const right = getAssignedConfiguration("star-graph-2");
+  renderStarGraph(left?.weights || null, "star-graph-1", left?.rateo ?? null);
+  renderStarGraph(right?.weights || null, "star-graph-2", right?.rateo ?? null);
+}
+
 export async function renderRateoChart() {
   const container = document.getElementById("rateo-chart");
   if (!container) {
     return;
   }
-  const getTarget = () => window.__starTarget || null;
 
-  const sessionId = getCurrentSessionId();
-  const all = await getAllConfigurations();
-  const points = all
-    .filter((item) => item.sessionId === sessionId)
-    .map((item) => ({
-      id: item.id,
-      timestep: Number(item.timestep),
+  const context = getCurrentContext();
+  let points = [];
+
+  try {
+    points = (await getConfigurationsForContext(context)).map((item) => ({
+      ...item,
       rateo: truncate3(Number(item.rateo)),
-      weights: item.weights || {},
-    }))
-    .filter((item) => Number.isFinite(item.timestep) && Number.isFinite(item.rateo))
-    .sort((a, b) => a.timestep - b.timestep);
-
-  if (!points.length) {
-    container.textContent = "No configurations saved yet.";
+      timestep: Number(item.timestep),
+    }));
+  } catch (error) {
+    container.textContent = `Unable to load configurations: ${error.message}`;
     return;
   }
 
-  const timesteps = points.map((p) => p.timestep);
+  clearInvalidAssignments(context);
+  const validIds = new Set(points.map((point) => point.id));
+  clearSelectionIfMissing(validIds);
+  clearAssignmentsIfMissing(validIds);
+
+  if (!points.length) {
+    container.textContent = "No configurations saved yet.";
+    refreshStarGraphs();
+    return;
+  }
+
+  const timesteps = points.map((point) => point.timestep);
   const availableWidth = container.clientWidth || 900;
   const availableHeight = container.clientHeight || HEIGHT;
   const svgWidth = availableWidth;
   const svgHeight = availableHeight;
 
-  const minRateo = d3.min(points, (p) => p.rateo) ?? 0;
-  const maxRateo = d3.max(points, (p) => p.rateo) ?? 1;
+  const minRateo = d3.min(points, (point) => point.rateo) ?? 0;
+  const maxRateo = d3.max(points, (point) => point.rateo) ?? 1;
   const yMin = Number.isFinite(minRateo) ? minRateo : 0;
   const yMax = Number.isFinite(maxRateo) ? maxRateo : 1;
 
@@ -67,7 +97,7 @@ export async function renderRateoChart() {
     .attr("viewBox", `0 0 ${svgWidth} ${svgHeight}`);
 
   const xAxis = d3.axisBottom(xScale).tickValues(timesteps);
-  const yAxis = d3.axisLeft(yScale).ticks(4).tickFormat((d) => truncate3(Number(d)).toFixed(3));
+  const yAxis = d3.axisLeft(yScale).ticks(4).tickFormat((value) => truncate3(Number(value)).toFixed(3));
 
   svg
     .append("g")
@@ -106,8 +136,8 @@ export async function renderRateoChart() {
 
   const line = d3
     .line()
-    .x((d) => xScale(d.timestep))
-    .y((d) => yScale(d.rateo));
+    .x((point) => xScale(point.timestep))
+    .y((point) => yScale(point.rateo));
 
   svg
     .append("path")
@@ -122,93 +152,67 @@ export async function renderRateoChart() {
     .selectAll("circle")
     .data(points)
     .join("circle")
-    .attr("cx", (d) => xScale(d.timestep))
-    .attr("cy", (d) => yScale(d.rateo))
+    .attr("cx", (point) => xScale(point.timestep))
+    .attr("cy", (point) => yScale(point.rateo))
     .attr("r", 3.5)
     .attr("fill", "#1f6feb")
     .attr("opacity", 0.7)
     .style("cursor", "pointer")
-    .on("click", (event, d) => {
-      const targetId = getTarget();
-      window.__lineSelectedId = d.id;
-      window.__lineSelectedTimestep = d.timestep;
-      window.__starSelections = window.__starSelections || {};
-      window.__starSelectionsId = window.__starSelectionsId || {};
+    .on("click", (event, point) => {
+      const targetId = getStarTarget();
+      setLineSelection(point);
       if (targetId) {
-        window.__starSelections[targetId] = d.timestep;
-        window.__starSelectionsId[targetId] = d.id;
-        renderStarGraph(d.weights, targetId, d.rateo);
+        assignConfigurationToStar(targetId, point);
+        renderStarGraph(point.weights, targetId, point.rateo);
       }
       applyPointStyles();
     });
 
   const applyPointStyles = () => {
-    const selections = window.__starSelections || {};
-    const left = selections["star-graph-1"];
-    const right = selections["star-graph-2"];
-    const hasTarget = Boolean(getTarget());
-    const lineSel = window.__lineSelectedTimestep;
+    const left = getAssignedTimestep("star-graph-1");
+    const right = getAssignedTimestep("star-graph-2");
+    const lineSelectionId = getLineSelectionId();
     pointGroup
-      .attr("r", (d) =>
-        d.timestep === left || d.timestep === right || (!hasTarget && d.timestep === lineSel) ? 5 : 3.5
+      .attr("r", (point) => (point.timestep === left || point.timestep === right || point.id === lineSelectionId ? 5 : 3.5))
+      .attr("opacity", (point) =>
+        point.timestep === left || point.timestep === right || point.id === lineSelectionId ? 1 : 0.7
       )
-      .attr("opacity", (d) =>
-        d.timestep === left || d.timestep === right || (!hasTarget && d.timestep === lineSel) ? 1 : 0.7
-      )
-      .attr("fill", (d) => {
-        if (!hasTarget && d.timestep === lineSel) {
-          if (d.timestep === left && d.timestep === right) return "#f59e0b";
-          if (d.timestep === left) return "#22c55e";
-          if (d.timestep === right) return "#ef4444";
-          return "#1f6feb";
-        }
-        if (d.timestep === left && d.timestep === right) return "#f59e0b";
-        if (d.timestep === left) return "#22c55e";
-        if (d.timestep === right) return "#ef4444";
+      .attr("fill", (point) => {
+        if (point.timestep === left && point.timestep === right) return "#f59e0b";
+        if (point.timestep === left) return "#22c55e";
+        if (point.timestep === right) return "#ef4444";
         return "#1f6feb";
       })
-      .attr("stroke", (d) => (!hasTarget && d.timestep === lineSel ? "#111827" : "none"))
-      .attr("stroke-width", (d) => (!hasTarget && d.timestep === lineSel ? 2 : 0));
+      .attr("stroke", (point) => (point.id === lineSelectionId ? "#111827" : "none"))
+      .attr("stroke-width", (point) => (point.id === lineSelectionId ? 2 : 0));
   };
 
   applyPointStyles();
+  refreshStarGraphs();
 
-  const selectedIds = new Set(points.map((p) => p.id));
-  if (window.__lineSelectedId && !selectedIds.has(window.__lineSelectedId)) {
-    window.__lineSelectedId = null;
-    window.__lineSelectedTimestep = null;
-  }
-
-  const deleteBtn = document.getElementById("delete-config-btn");
-  if (deleteBtn && !deleteBtn._deleteBound) {
+  const deleteBtn = getDeleteButton();
+  if (deleteBtn && deleteBtn.dataset.bound !== "true") {
     deleteBtn.addEventListener("click", async () => {
-      const selectedId = window.__lineSelectedId;
-      const selectedTimestep = window.__lineSelectedTimestep;
+      const selectedId = getLineSelectionId();
       if (!selectedId) {
         return;
       }
+
       try {
         await deleteConfiguration(selectedId);
-        if (selectedTimestep !== null && selectedTimestep !== undefined) {
-          if (window.__starSelections?.["star-graph-1"] === selectedTimestep) {
-            delete window.__starSelections["star-graph-1"];
-            if (window.__starSelectionsId) delete window.__starSelectionsId["star-graph-1"];
-            renderStarGraph(null, "star-graph-1");
-          }
-          if (window.__starSelections?.["star-graph-2"] === selectedTimestep) {
-            delete window.__starSelections["star-graph-2"];
-            if (window.__starSelectionsId) delete window.__starSelectionsId["star-graph-2"];
-            renderStarGraph(null, "star-graph-2");
-          }
+        if (getAssignedConfiguration("star-graph-1")?.id === selectedId) {
+          clearAssignedConfiguration("star-graph-1");
         }
-        window.__lineSelectedId = null;
-        window.__lineSelectedTimestep = null;
-        renderRateoChart();
+        if (getAssignedConfiguration("star-graph-2")?.id === selectedId) {
+          clearAssignedConfiguration("star-graph-2");
+        }
+        setLineSelection(null);
+        await renderRateoChart();
       } catch (error) {
         console.error("Delete failed", error);
       }
     });
-    deleteBtn._deleteBound = true;
+    deleteBtn.dataset.bound = "true";
   }
 
   if (!container._rateoResizeObserver) {

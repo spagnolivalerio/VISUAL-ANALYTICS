@@ -23,6 +23,15 @@ def build_precomputed_mds(**kwargs):
         return build_mds(metric="precomputed", **kwargs)
     except (TypeError, ValueError):
         return build_mds(dissimilarity="precomputed", **kwargs)
+
+def resolve_dataset_path(dataset_name):
+    if not dataset_name:
+        return WINE_PATH
+
+    dataset = DATA_PATH / dataset_name
+    if not dataset.exists() or not dataset.is_file():
+        raise FileNotFoundError(f"Unknown dataset '{dataset_name}'")
+    return dataset
     
 def avg_pairwise_distance(items_a, items_b=None):
         if items_b is None:
@@ -183,13 +192,11 @@ def mds_classic():
 @app.post("/numeric-attributes")
 def numeric_attributes():
     payload = request.get_json(silent=True) or {}
-    required_attr = ["cluster_attr", "dataset"]
-    if not all(k in payload for k in required_attr):
-        cluster_attr = "Class label"
-        dataset = WINE_PATH
-    else:
-        cluster_attr = payload["cluster_attr"]
-        dataset = DATA_PATH / payload["dataset"]
+    cluster_attr = payload.get("cluster_attr", "Class label")
+    try:
+        dataset = resolve_dataset_path(payload.get("dataset"))
+    except FileNotFoundError as exc:
+        return jsonify(error=str(exc)), 400
     
     df = pd.read_csv(dataset, sep=None, engine="python", decimal=",")
     feature_df = df.drop(columns=[cluster_attr], errors="ignore")
@@ -202,10 +209,10 @@ def numeric_attributes():
 @app.post("/all_attributes")
 def get_attributes():
     payload = request.get_json(silent=True) or {}
-    if payload["dataset"]:
-        dataset = DATA_PATH / payload["dataset"]
-    else: 
-        return jsonify({"error": "missing dataset"}), 400
+    try:
+        dataset = resolve_dataset_path(payload.get("dataset"))
+    except FileNotFoundError as exc:
+        return jsonify(error=str(exc)), 400
     
     df = pd.read_csv(dataset, sep=None, engine="python", decimal=",")
     attributes = df.columns.tolist()

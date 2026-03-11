@@ -1,3 +1,5 @@
+import { setCurrentClusterAttr, setCurrentDataset } from "./app-context";
+
 const sidebar = document.getElementById("app-sidebar");
 const toggle = document.querySelector(".sidebar-toggle");
 const closeBtn = document.querySelector(".sidebar-close");
@@ -18,7 +20,7 @@ function renderAttributes(list) {
     if (name !== "Loading..." && name !== "Error loading attributes" && name !== "No attributes") {
       li.style.cursor = "pointer";
       li.addEventListener("click", () => {
-        localStorage.setItem("cluster_attr", name);
+        setCurrentClusterAttr(name);
         location.reload();
       });
     }
@@ -42,7 +44,8 @@ if (datasetsList) {
         li.textContent = name;
         li.style.cursor = "pointer";
         li.addEventListener("click", () => {
-          localStorage.setItem("dataset", name);
+          setCurrentDataset(name);
+          setCurrentClusterAttr(null);
           renderAttributes(["Loading..."]);
           fetch("/api/all_attributes", {
             method: "POST",

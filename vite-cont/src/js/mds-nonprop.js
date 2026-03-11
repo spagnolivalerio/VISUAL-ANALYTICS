@@ -1,9 +1,10 @@
 import * as d3 from "d3";
-import { saveConfiguration } from "./config-store";
+import { getCurrentContext } from "./app-context";
+import { assignConfigurationToStar, getStarTarget } from "./config-selection";
+import { getNextTimestep, saveConfiguration } from "./config-store";
 import { renderRateoChart } from "./rateo-chart";
 import { renderStarGraph } from "./star-graph";
-import { getConfigurationById } from "./config-store";
-import { renderWeightsPanel } from "./weights-panel";
+import { getWeightsFromPanel } from "./weights-panel";
 
 async function restRequest(weights, dataset, clusterAttr) {
   const payload = {};
@@ -22,52 +23,19 @@ const MARGIN = { top: 20, right: 20, bottom: 40, left: 46 };
 
 let resizeObserver;
 let lastPoints = [];
-let sessionTimestep = 0;
 
-export function renderNonPropFromSaved(points, timestep) {
+export function renderNonPropFromSaved(config) {
   const container = document.getElementById("mds-non-proportional-container");
   const timestepLabel = document.getElementById("nonprop-timestep");
+  const points = config?.points;
   if (!container || !Array.isArray(points) || !points.length) {
     return;
   }
   lastPoints = points;
   drawNonPropMds(container, points, container.dataset.showCentroids === "true");
   if (timestepLabel) {
-    timestepLabel.textContent = timestep === undefined ? "(saved)" : `(t=${timestep})`;
+    timestepLabel.textContent = config?.timestep === undefined ? "(saved)" : `(t=${config.timestep})`;
   }
-}
-
-function collectWeights() {
-  const sliders = Array.from(document.querySelectorAll("#weights-list input[type='range'][data-attribute]"));
-  const weights = {};
-  for (const slider of sliders) {
-    weights[slider.dataset.attribute] = Number(slider.value);
-  }
-  return weights;
-}
-
-export async function syncWeights() {
-  const syncButtons = document.querySelectorAll(".sync-btn[data-target]");
-  syncButtons.forEach((btn) => {
-    btn.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      const targetId = btn.dataset.target;
-      const selections = window.__starSelections || {};
-      const timestep = selections[targetId];
-      if (timestep === undefined) {
-        return;
-      }
-      const selectedId = window.__starSelectionsId?.[targetId];
-      if (!selectedId) {
-        return;
-      }
-      const config = await getConfigurationById(selectedId);
-      if (config?.points?.length) {
-        renderNonPropFromSaved(config.points, config.timestep);
-        renderWeightsPanel(config?.weights)
-      }
-    });
-  });
 }
 
 function drawNonPropMds(container, points, showCentroids) {
@@ -376,7 +344,7 @@ export function initNonPropMds(dataset, cluster_attr) {
   container.classList.add("plot-placeholder");
 
   runButton.addEventListener("click", async () => {
-    const weights = collectWeights();
+    const weights = getWeightsFromPanel();
     if (!Object.keys(weights).length) {
       status.textContent = "No weights available.";
       return;
@@ -408,20 +376,28 @@ export function initNonPropMds(dataset, cluster_attr) {
 
       lastPoints = points;
       drawNonPropMds(container, points, container.dataset.showCentroids === "true");
-      const timestep = sessionTimestep;
-      const targetId = window.__starTarget || null;
+      const context = getCurrentContext();
+      const timestep = await getNextTimestep({
+        dataset: dataset ?? context.dataset,
+        clusterAttr: cluster_attr ?? context.clusterAttr,
+      });
+      const targetId = getStarTarget();
       try {
-        await saveConfiguration({ timestep, weights, rateo: ratioValue, points });
-        sessionTimestep += 1;
+        const savedConfig = await saveConfiguration({
+          timestep,
+          dataset: dataset ?? context.dataset,
+          clusterAttr: cluster_attr ?? context.clusterAttr,
+          weights,
+          rateo: ratioValue,
+          points,
+          attributes: Object.keys(weights),
+        });
         status.textContent = `Configuration saved (t=${timestep}).`;
         if (timestepLabel) {
           timestepLabel.textContent = `(t=${timestep})`;
         }
-        window.__starSelections = window.__starSelections || {};
         if (targetId) {
-          window.__starSelections[targetId] = timestep;
-          window.__starSelectionsId = window.__starSelectionsId || {};
-          window.__starSelectionsId[targetId] = undefined;
+          assignConfigurationToStar(targetId, savedConfig);
         }
         renderRateoChart();
         if (targetId) {
