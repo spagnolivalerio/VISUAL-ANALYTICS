@@ -21,19 +21,18 @@ function getContainerSize(container) {
 
 function buildChart(container, clearContainer) {
   clearContainer(container);
-
   const { width, height } = getContainerSize(container);
-  const innerWidth = width - MARGIN.left - MARGIN.right;
-  const innerHeight = height - MARGIN.top - MARGIN.bottom;
-
   const svg = d3
     .select(container)
     .append("svg")
     .attr("viewBox", `0 0 ${width} ${height}`);
-
   const g = svg.append("g").attr("transform", `translate(${MARGIN.left},${MARGIN.top})`);
-
-  return { svg, g, innerWidth, innerHeight };
+  return {
+    svg,
+    g,
+    innerWidth: width - MARGIN.left - MARGIN.right,
+    innerHeight: height - MARGIN.top - MARGIN.bottom,
+  };
 }
 
 function buildScales(points, innerWidth, innerHeight) {
@@ -44,9 +43,7 @@ function buildScales(points, innerWidth, innerHeight) {
 }
 
 function buildColorScale(points) {
-  const color = d3.scaleOrdinal(d3.schemeTableau10);
-  color.domain([...new Set(points.map((d) => d.class_label))]);
-  return color;
+  return d3.scaleOrdinal(d3.schemeTableau10).domain([...new Set(points.map((d) => d.class_label))]);
 }
 
 function renderAxes(g, x, y, innerWidth, innerHeight) {
@@ -130,24 +127,20 @@ function applyCentroidVisibility(centroidLayer, showCentroids) {
 
 function renderLegend(container, labels, color, showLegend) {
   const legend = document.createElement("div");
+  const list = document.createElement("div");
   legend.className = "plot-legend";
   legend.hidden = !showLegend;
-
-  const list = document.createElement("div");
   list.className = "plot-legend-list";
 
   labels.forEach((label) => {
     const item = document.createElement("div");
-    item.className = "plot-legend-item";
-
     const swatch = document.createElement("span");
+    const text = document.createElement("span");
+    item.className = "plot-legend-item";
     swatch.className = "plot-legend-swatch";
     swatch.style.backgroundColor = color(label);
-
-    const text = document.createElement("span");
     text.className = "plot-legend-label";
     text.textContent = String(label);
-
     item.appendChild(swatch);
     item.appendChild(text);
     list.appendChild(item);
@@ -194,51 +187,29 @@ function drawPointLink(linksLayer, selected, centroid, x, y) {
 
 function createSelectionController(points, clusters, centroids, circles, centroidCircles, linksLayer, x, y) {
   let currentSelection = null;
-
-  function clearLinks() {
+  const resetHighlight = () => {
     linksLayer.selectAll("line").remove();
-  }
-
-  function resetPointStyles() {
     circles.attr("opacity", DEFAULT_POINT_OPACITY).attr("r", POINT_RADIUS);
-  }
-
-  function resetCentroidStyles() {
     centroidCircles.attr("opacity", DEFAULT_CENTROID_OPACITY);
-  }
-
-  function resetHighlight() {
-    clearLinks();
-    resetPointStyles();
-    resetCentroidStyles();
     currentSelection = null;
-  }
+  };
 
   function highlightCluster(label) {
-    clearLinks();
-
     const cluster = clusters.get(label) || [];
     const centroid = centroids.find((c) => c.label === label);
     if (!centroid) {
       return;
     }
-
-    resetPointStyles();
-    resetCentroidStyles();
-
+    resetHighlight();
     circles.attr("opacity", DIMMED_POINT_OPACITY);
     circles.filter((p) => p.class_label === label).attr("opacity", ACTIVE_POINT_OPACITY);
-
     centroidCircles.attr("opacity", DIMMED_CENTROID_OPACITY);
     centroidCircles.filter((c) => c.label === label).attr("opacity", ACTIVE_CENTROID_OPACITY);
-
     drawClusterLinks(linksLayer, cluster, centroid, x, y);
     currentSelection = { type: "centroid", key: label };
   }
 
   function highlightPoint(pointId) {
-    clearLinks();
-
     const selected = points.find((p) => p.id === pointId);
     if (!selected) {
       return;
@@ -248,17 +219,13 @@ function createSelectionController(points, clusters, centroids, circles, centroi
     if (!centroid) {
       return;
     }
-
-    resetPointStyles();
-    resetCentroidStyles();
-
+    resetHighlight();
     circles.attr("opacity", DIMMED_POINT_OPACITY);
     circles.filter((p) => p.class_label === selected.class_label).attr("opacity", ACTIVE_POINT_OPACITY);
     circles
       .filter((p) => p.id === selected.id)
       .attr("opacity", ACTIVE_CENTROID_OPACITY)
       .attr("r", ACTIVE_POINT_RADIUS);
-
     centroidCircles.attr("opacity", DIMMED_CENTROID_OPACITY);
     centroidCircles
       .filter((c) => c.label === selected.class_label)
@@ -277,47 +244,39 @@ function createSelectionController(points, clusters, centroids, circles, centroi
 }
 
 function bindSelectionEvents(svg, circles, centroidCircles, selectionController, selectionState) {
+  const resetSelection = () => {
+    selectionController.resetHighlight();
+    selectionState?.clear?.();
+    window.dispatchEvent(new CustomEvent("mds:reset"));
+  };
+
   centroidCircles.on("click", (event, d) => {
     event.stopPropagation();
-
     const currentSelection = selectionController.getCurrentSelection();
     if (currentSelection?.type === "centroid" && currentSelection.key === d.label) {
-      selectionController.resetHighlight();
-      selectionState?.clear?.();
-      window.dispatchEvent(new CustomEvent("mds:reset"));
+      resetSelection();
       return;
     }
-
     if (currentSelection?.type === "point") {
       selectionController.resetHighlight();
     }
-
     selectionController.highlightCluster(d.label);
     selectionState?.set?.({ type: "centroid", key: d.label });
     window.dispatchEvent(new CustomEvent("mds:centroid", { detail: { label: d.label } }));
   });
 
-  svg.on("click", () => {
-    selectionController.resetHighlight();
-    selectionState?.clear?.();
-    window.dispatchEvent(new CustomEvent("mds:reset"));
-  });
+  svg.on("click", resetSelection);
 
   circles.on("click", (event, d) => {
     event.stopPropagation();
-
     const currentSelection = selectionController.getCurrentSelection();
     if (currentSelection?.type === "point" && currentSelection.key === d.id) {
-      selectionController.resetHighlight();
-      selectionState?.clear?.();
-      window.dispatchEvent(new CustomEvent("mds:reset"));
+      resetSelection();
       return;
     }
-
     if (currentSelection?.type === "centroid") {
       selectionController.resetHighlight();
     }
-
     selectionController.highlightPoint(d.id);
     selectionState?.set?.({ type: "point", key: d.id });
     window.dispatchEvent(new CustomEvent("mds:point", { detail: { id: d.id } }));
@@ -325,123 +284,96 @@ function bindSelectionEvents(svg, circles, centroidCircles, selectionController,
 }
 
 function bindGlobalSelectionSync(container, selectionController) {
-  function onCentroid(event) {
-    const currentSelection = selectionController.getCurrentSelection();
-    if (currentSelection?.type === "point") {
-      selectionController.resetHighlight();
+  const handlers = {
+    centroid: (event) => {
+      const currentSelection = selectionController.getCurrentSelection();
+      if (currentSelection?.type === "point") selectionController.resetHighlight();
+      if (currentSelection?.type !== "centroid" || currentSelection.key !== event.detail.label) {
+        selectionController.highlightCluster(event.detail.label);
+      }
+    },
+    point: (event) => {
+      const currentSelection = selectionController.getCurrentSelection();
+      if (currentSelection?.type === "centroid") selectionController.resetHighlight();
+      if (currentSelection?.type !== "point" || currentSelection.key !== event.detail.id) {
+        selectionController.highlightPoint(event.detail.id);
+      }
+    },
+    reset: () => selectionController.resetHighlight(),
+  };
+
+  [
+    ["mds:centroid", "_mdsCentroidHandler", handlers.centroid],
+    ["mds:reset", "_mdsResetHandler", handlers.reset],
+    ["mds:point", "_mdsPointHandler", handlers.point],
+  ].forEach(([eventName, key, handler]) => {
+    if (container[key]) {
+      window.removeEventListener(eventName, container[key]);
     }
-    if (currentSelection?.type === "centroid" && currentSelection.key === event.detail.label) {
-      return;
-    }
-    selectionController.highlightCluster(event.detail.label);
-  }
-
-  function onPoint(event) {
-    const currentSelection = selectionController.getCurrentSelection();
-    if (currentSelection?.type === "centroid") {
-      selectionController.resetHighlight();
-    }
-    if (currentSelection?.type === "point" && currentSelection.key === event.detail.id) {
-      return;
-    }
-    selectionController.highlightPoint(event.detail.id);
-  }
-
-  function onReset() {
-    selectionController.resetHighlight();
-  }
-
-  if (container._mdsCentroidHandler) {
-    window.removeEventListener("mds:centroid", container._mdsCentroidHandler);
-  }
-  if (container._mdsResetHandler) {
-    window.removeEventListener("mds:reset", container._mdsResetHandler);
-  }
-  if (container._mdsPointHandler) {
-    window.removeEventListener("mds:point", container._mdsPointHandler);
-  }
-
-  container._mdsCentroidHandler = onCentroid;
-  container._mdsResetHandler = onReset;
-  container._mdsPointHandler = onPoint;
-
-  window.addEventListener("mds:centroid", onCentroid);
-  window.addEventListener("mds:reset", onReset);
-  window.addEventListener("mds:point", onPoint);
+    container[key] = handler;
+    window.addEventListener(eventName, handler);
+  });
 }
 
 function restoreSelection(points, clusters, selectionState) {
   const savedSelection = selectionState?.get?.();
-  if (savedSelection?.type === "centroid") {
-    if (clusters.has(savedSelection.key)) {
-      window.dispatchEvent(new CustomEvent("mds:centroid", { detail: { label: savedSelection.key } }));
-    } else {
-      selectionState?.clear?.();
-    }
-  }
+  const valid =
+    savedSelection?.type === "centroid"
+      ? clusters.has(savedSelection.key)
+      : savedSelection?.type === "point"
+        ? points.some((p) => p.id === savedSelection.key)
+        : false;
 
-  if (savedSelection?.type === "point") {
-    if (points.find((p) => p.id === savedSelection.key)) {
-      window.dispatchEvent(new CustomEvent("mds:point", { detail: { id: savedSelection.key } }));
-    } else {
-      selectionState?.clear?.();
-    }
-  }
-}
-
-export function configureCentroidToggle(container, toggleButton) {
-  if (!container.dataset.showCentroids) {
-    container.dataset.showCentroids = "true";
-  }
-
-  if (!toggleButton) {
+  if (!savedSelection) {
     return;
   }
 
+  if (!valid) {
+    selectionState?.clear?.();
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(savedSelection.type === "centroid" ? "mds:centroid" : "mds:point", {
+      detail: savedSelection.type === "centroid" ? { label: savedSelection.key } : { id: savedSelection.key },
+    })
+  );
+}
+
+export function configureCentroidToggle(container, toggleButton) {
+  container.dataset.showCentroids ||= "true";
+  if (!toggleButton) {
+    return;
+  }
   toggleButton.setAttribute("aria-pressed", container.dataset.showCentroids);
   if (toggleButton._centroidToggleBound) {
     return;
   }
-
   toggleButton.addEventListener("click", () => {
     const next = container.dataset.showCentroids !== "true";
     container.dataset.showCentroids = next ? "true" : "false";
     toggleButton.setAttribute("aria-pressed", container.dataset.showCentroids);
-
-    d3.select(container)
-      .select(".cluster-centroids")
-      .attr("display", next ? null : "none")
-      .style("pointer-events", next ? "auto" : "none");
+    applyCentroidVisibility(d3.select(container).select(".cluster-centroids"), next);
   });
-
   toggleButton._centroidToggleBound = true;
 }
 
 export function configureLegendToggle(container, toggleButton) {
-  if (!container.dataset.showLegend) {
-    container.dataset.showLegend = "false";
-  }
-
+  container.dataset.showLegend ||= "false";
   if (!toggleButton) {
     return;
   }
-
   toggleButton.setAttribute("aria-pressed", container.dataset.showLegend);
   if (toggleButton._legendToggleBound) {
     return;
   }
-
   toggleButton.addEventListener("click", () => {
     const next = container.dataset.showLegend !== "true";
     container.dataset.showLegend = next ? "true" : "false";
     toggleButton.setAttribute("aria-pressed", container.dataset.showLegend);
-
     const legend = container.querySelector(".plot-legend");
-    if (legend) {
-      legend.hidden = !next;
-    }
+    if (legend) legend.hidden = !next;
   });
-
   toggleButton._legendToggleBound = true;
 }
 
@@ -464,9 +396,7 @@ export function renderMdsPlot({
   container,
   points,
   showCentroids,
-  clearContainer = (node) => {
-    node.innerHTML = "";
-  },
+  clearContainer = (node) => (node.innerHTML = ""),
   selectionState = null,
 }) {
   const { svg, g, innerWidth, innerHeight } = buildChart(container, clearContainer);

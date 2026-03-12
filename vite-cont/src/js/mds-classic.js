@@ -3,27 +3,6 @@ import { configureCentroidToggle, configureLegendToggle, parseMdsJsonResponse, r
 
 let resizeObserver;
 
-async function loadClassicPoints(dataset, clusterAttr) {
-  const response = await requestClassicMds(dataset, clusterAttr);
-  const payload = await parseMdsJsonResponse(response);
-  return payload.points || [];
-}
-
-function observeResize(container, points) {
-  if (resizeObserver) {
-    resizeObserver.disconnect();
-  }
-
-  resizeObserver = new ResizeObserver(() =>
-    drawClassicMds(container, points, container.dataset.showCentroids === "true")
-  );
-  resizeObserver.observe(container);
-}
-
-function drawClassicMds(container, points, showCentroids) {
-  renderMdsPlot({ container, points, showCentroids });
-}
-
 export async function renderClassicMds(dataset, cluster_attr) {
   const container = document.getElementById("mds-classic-container");
   const toggleButton = document.getElementById("toggle-centroids-classic");
@@ -38,14 +17,25 @@ export async function renderClassicMds(dataset, cluster_attr) {
   container.textContent = "Loading MDS classic points...";
 
   try {
-    const points = await loadClassicPoints(dataset, cluster_attr);
+    const response = await requestClassicMds(dataset, cluster_attr);
+    const payload = await parseMdsJsonResponse(response);
+    const points = payload.points || [];
     if (!points.length) {
       container.textContent = "No points returned.";
       return;
     }
 
-    drawClassicMds(container, points, container.dataset.showCentroids === "true");
-    observeResize(container, points);
+    const draw = () =>
+      renderMdsPlot({
+        container,
+        points,
+        showCentroids: container.dataset.showCentroids === "true",
+      });
+
+    draw();
+    resizeObserver?.disconnect();
+    resizeObserver = new ResizeObserver(draw);
+    resizeObserver.observe(container);
   } catch (error) {
     container.textContent = `Classic MDS request failed: ${error.message}`;
   }

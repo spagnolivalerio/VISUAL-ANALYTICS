@@ -21,24 +21,10 @@ const DEFAULT_POINT_RADIUS = 3.5;
 const HIGHLIGHTED_POINT_RADIUS = 5;
 const DEFAULT_POINT_OPACITY = 0.7;
 const HIGHLIGHTED_POINT_OPACITY = 1;
+const STAR_GRAPH_IDS = ["star-graph-1", "star-graph-2"];
 
 function truncate3(value) {
   return Math.trunc(value * 1000) / 1000;
-}
-
-function getDeleteButton() {
-  return document.getElementById("delete-config-btn");
-}
-
-function getRateoContainer() {
-  return document.getElementById("rateo-chart");
-}
-
-function getChartSize(container) {
-  return {
-    width: container.clientWidth || 900,
-    height: container.clientHeight || HEIGHT,
-  };
 }
 
 function normalizeConfigurations(items) {
@@ -47,11 +33,6 @@ function normalizeConfigurations(items) {
     rateo: truncate3(Number(item.rateo)),
     timestep: Number(item.timestep),
   }));
-}
-
-async function loadRateoPoints(context) {
-  const items = await getConfigurationsForContext(context);
-  return normalizeConfigurations(items);
 }
 
 function syncSelectionState(points, context) {
@@ -63,11 +44,10 @@ function syncSelectionState(points, context) {
 }
 
 function refreshStarGraphs() {
-  const left = getAssignedConfiguration("star-graph-1");
-  const right = getAssignedConfiguration("star-graph-2");
-
-  renderStarGraph(left?.weights || null, "star-graph-1", left?.rateo ?? null);
-  renderStarGraph(right?.weights || null, "star-graph-2", right?.rateo ?? null);
+  STAR_GRAPH_IDS.forEach((targetId) => {
+    const config = getAssignedConfiguration(targetId);
+    renderStarGraph(config?.weights || null, targetId, config?.rateo ?? null);
+  });
 }
 
 function buildScales(points, width, height) {
@@ -211,9 +191,7 @@ function renderPoints(svg, points, xScale, yScale) {
     .attr("cx", (point) => xScale(point.timestep))
     .attr("cy", (point) => yScale(point.rateo))
     .style("cursor", "pointer")
-    .on("click", (event, point) => {
-      handlePointSelection(point, pointGroup);
-    });
+    .on("click", (_, point) => handlePointSelection(point, pointGroup));
 
   applyPointStyles(pointGroup);
   return pointGroup;
@@ -238,7 +216,7 @@ async function deleteSelectedConfiguration() {
 }
 
 function bindDeleteButton() {
-  const deleteBtn = getDeleteButton();
+  const deleteBtn = document.getElementById("delete-config-btn");
   if (!deleteBtn || deleteBtn.dataset.bound === "true") {
     return;
   }
@@ -268,13 +246,9 @@ function bindResizeObserver(container) {
   container._rateoResizeObserver = observer;
 }
 
-function renderEmptyState(container) {
-  container.textContent = "No configurations saved yet.";
-  refreshStarGraphs();
-}
-
 function renderRateoSvg(container, points) {
-  const { width, height } = getChartSize(container);
+  const width = container.clientWidth || 900;
+  const height = container.clientHeight || HEIGHT;
   const { timesteps, xScale, yScale } = buildScales(points, width, height);
   const svg = createSvg(container, width, height);
 
@@ -285,30 +259,28 @@ function renderRateoSvg(container, points) {
 }
 
 export async function renderRateoChart() {
-  const container = getRateoContainer();
+  const container = document.getElementById("rateo-chart");
   if (!container) {
     return;
   }
 
   const context = getCurrentContext();
-  let points = [];
 
   try {
-    points = await loadRateoPoints(context);
+    const points = normalizeConfigurations(await getConfigurationsForContext(context));
+    syncSelectionState(points, context);
+
+    if (!points.length) {
+      container.textContent = "No configurations saved yet.";
+      refreshStarGraphs();
+      return;
+    }
+
+    renderRateoSvg(container, points);
+    refreshStarGraphs();
+    bindDeleteButton();
+    bindResizeObserver(container);
   } catch (error) {
     container.textContent = `Unable to load configurations: ${error.message}`;
-    return;
   }
-
-  syncSelectionState(points, context);
-
-  if (!points.length) {
-    renderEmptyState(container);
-    return;
-  }
-
-  renderRateoSvg(container, points);
-  refreshStarGraphs();
-  bindDeleteButton();
-  bindResizeObserver(container);
 }

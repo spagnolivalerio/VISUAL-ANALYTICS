@@ -19,6 +19,7 @@
   --row-gap: 20px;
   --card-gap: 20px;
   --header-height: 72px;
+  --top-bar-height: 54px;
   --bottom-row-height: clamp(240px, 31vh, 300px);
 }
 
@@ -63,19 +64,22 @@ label {
   min-height: 0;
 }
 
-.page-header {
-  height: var(--header-height);
-  flex: 0 0 var(--header-height);
+.top-bar {
+  height: var(--top-bar-height);
+  flex: 0 0 var(--top-bar-height);
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.page-header p {
-  color: var(--text-secondary);
+.top-bar-left,
+.top-bar-content {
+  min-width: 0;
+}
+
+.top-bar-content {
+  flex: 1 1 auto;
 }
 
 .page-content {
@@ -434,7 +438,7 @@ label {
 }
 
 .star-block {
-  flex: 0 0 320px;
+  flex: 0 0 380px;
   min-width: 0;
 }
 

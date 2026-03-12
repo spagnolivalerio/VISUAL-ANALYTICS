@@ -23,18 +23,6 @@ function formatRateo(value) {
   return Number(value).toFixed(3);
 }
 
-function getContainer(targetId) {
-  return document.getElementById(targetId);
-}
-
-function clearContainer(container) {
-  container.innerHTML = "";
-}
-
-function renderEmptyState(container) {
-  container.textContent = "No configuration selected.";
-}
-
 function appendRateoBadge(container, rateo) {
   const rateoText = formatRateo(rateo);
   if (rateoText === null) {
@@ -60,10 +48,6 @@ function getDimensions(container) {
     width: Math.max(1, Math.round(rect.width) || DEFAULT_SIZE),
     height: Math.max(1, Math.round(rect.height) || DEFAULT_SIZE),
   };
-}
-
-function getWeightEntries(weights) {
-  return Object.entries(weights);
 }
 
 function getChartGeometry(labels, width, height) {
@@ -148,34 +132,24 @@ function getLabelAlignment(cos, sin) {
 }
 
 function getClampedLabelCoordinates({ width, height, x, y, textWidth, textHeight, align, baseline }) {
-  let clampedX = x;
-  let clampedY = y;
-
-  if (align === "left") {
-    clampedX = clampLabelPosition(clampedX, clampedX, width - LABEL_CLAMP - textWidth);
-  } else if (align === "right") {
-    clampedX = clampLabelPosition(clampedX, LABEL_CLAMP + textWidth, clampedX);
-  } else {
-    clampedX = clampLabelPosition(
-      clampedX,
-      LABEL_CLAMP + textWidth / 2,
-      width - LABEL_CLAMP - textWidth / 2
-    );
-  }
-
-  if (baseline === "top") {
-    clampedY = clampLabelPosition(clampedY, clampedY, height - LABEL_CLAMP - textHeight);
-  } else if (baseline === "bottom") {
-    clampedY = clampLabelPosition(clampedY, LABEL_CLAMP + textHeight, clampedY);
-  } else {
-    clampedY = clampLabelPosition(
-      clampedY,
-      LABEL_CLAMP + textHeight / 2,
-      height - LABEL_CLAMP - textHeight / 2
-    );
-  }
-
-  return { x: clampedX, y: clampedY };
+  return {
+    x:
+      align === "left"
+        ? clampLabelPosition(x, x, width - LABEL_CLAMP - textWidth)
+        : align === "right"
+          ? clampLabelPosition(x, LABEL_CLAMP + textWidth, x)
+          : clampLabelPosition(x, LABEL_CLAMP + textWidth / 2, width - LABEL_CLAMP - textWidth / 2),
+    y:
+      baseline === "top"
+        ? clampLabelPosition(y, y, height - LABEL_CLAMP - textHeight)
+        : baseline === "bottom"
+          ? clampLabelPosition(y, LABEL_CLAMP + textHeight, y)
+          : clampLabelPosition(
+              y,
+              LABEL_CLAMP + textHeight / 2,
+              height - LABEL_CLAMP - textHeight / 2
+            ),
+  };
 }
 
 function buildAxes(labels, geometry, width, height) {
@@ -304,22 +278,22 @@ function buildStarGraphSpec(width, height, axes, series) {
 }
 
 export async function renderStarGraph(weights, targetId, rateo = null) {
-  const container = getContainer(targetId);
+  const container = document.getElementById(targetId);
   if (!container) {
     return;
   }
 
-  clearContainer(container);
+  container.innerHTML = "";
 
   if (!weights || !Object.keys(weights).length) {
-    renderEmptyState(container);
+    container.textContent = "No configuration selected.";
     return;
   }
 
   appendRateoBadge(container, rateo);
   const embedTarget = createEmbedTarget(container);
 
-  const entries = getWeightEntries(weights);
+  const entries = Object.entries(weights);
   const labels = entries.map(([key]) => key);
   const values = entries.map(([, value]) => Number(value));
   const { width, height } = getDimensions(container);

@@ -121,10 +121,6 @@
 }
 
 .sidebar-toggle {
-  position: fixed;
-  top: 16px;
-  left: 16px;
-  z-index: 60;
   display: inline-flex;
   align-items: center;
   gap: 10px;

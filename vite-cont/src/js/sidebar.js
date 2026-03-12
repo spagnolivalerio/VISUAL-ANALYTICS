@@ -28,7 +28,7 @@ function createListItem(label, onClick = null, isSelected = false) {
   return li;
 }
 
-function renderList(listElement, items, emptyLabel, createItem) {
+function renderList(listElement, items, emptyLabel, getItemConfig) {
   if (!listElement) {
     return;
   }
@@ -40,32 +40,28 @@ function renderList(listElement, items, emptyLabel, createItem) {
   }
 
   items.forEach((item) => {
-    listElement.appendChild(createItem(item));
+    const [label, onClick, isSelected] = getItemConfig(item);
+    listElement.appendChild(createListItem(label, onClick, isSelected));
   });
 }
 
 function renderAttributes(items) {
-  renderList(attributesList, items, NO_ATTRIBUTES_LABEL, (name) => {
-    const isClickable =
-      name !== ATTRIBUTES_LOADING_LABEL &&
-      name !== ATTRIBUTES_ERROR_LABEL &&
-      name !== NO_ATTRIBUTES_LABEL;
-
-    return createListItem(name, isClickable ? () => handleAttributeSelection(name) : null);
-  });
+  renderList(attributesList, items, NO_ATTRIBUTES_LABEL, (name) => [
+    name,
+    [ATTRIBUTES_LOADING_LABEL, ATTRIBUTES_ERROR_LABEL, NO_ATTRIBUTES_LABEL].includes(name)
+      ? null
+      : () => handleAttributeSelection(name),
+    false,
+  ]);
 }
 
 function renderDatasets(items) {
   const currentDataset = getCurrentDataset();
-  renderList(datasetsList, items, NO_DATASETS_LABEL, (name) =>
-    createListItem(
-      name,
-      () => {
-        handleDatasetSelection(name);
-      },
-      name === currentDataset
-    )
-  );
+  renderList(datasetsList, items, NO_DATASETS_LABEL, (name) => [
+    name,
+    () => handleDatasetSelection(name),
+    name === currentDataset,
+  ]);
 }
 
 function handleAttributeSelection(name) {
@@ -87,7 +83,9 @@ async function loadAttributes(datasetName) {
 function handleDatasetSelection(name) {
   setCurrentDataset(name);
   setCurrentClusterAttr(null);
-  renderDatasets(Array.from(datasetsList?.querySelectorAll("li") || []).map((item) => item.textContent).filter(Boolean));
+  renderDatasets(
+    Array.from(datasetsList?.querySelectorAll("li") || [], (item) => item.textContent).filter(Boolean)
+  );
   renderAttributes([ATTRIBUTES_LOADING_LABEL]);
   loadAttributes(name);
 }
@@ -135,16 +133,8 @@ function closeSidebar() {
 
 function toggleSidebar(event) {
   event.stopPropagation();
-
-  if (!sidebar) {
-    return;
-  }
-
-  if (sidebar.classList.contains("is-open")) {
-    closeSidebar();
-  } else {
-    openSidebar();
-  }
+  if (sidebar?.classList.contains("is-open")) closeSidebar();
+  else openSidebar();
 }
 
 function initSidebarToggle() {

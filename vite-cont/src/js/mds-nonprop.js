@@ -11,12 +11,8 @@ let resizeObserver;
 let lastPoints = [];
 const nonPropSelectionState = {
   get: () => window.__mdsSelection || null,
-  set: (selection) => {
-    window.__mdsSelection = selection;
-  },
-  clear: () => {
-    window.__mdsSelection = null;
-  },
+  set: (selection) => (window.__mdsSelection = selection),
+  clear: () => (window.__mdsSelection = null),
 };
 
 async function loadNonPropPoints(weights, dataset, clusterAttr) {
@@ -49,22 +45,6 @@ async function persistConfiguration(points, ratioValue, weights, dataset, cluste
   });
 
   return { savedConfig, timestep };
-}
-
-function updateSavedConfigurationUi(status, timestepLabel, timestep) {
-  status.textContent = `Configuration saved (t=${timestep}).`;
-  if (timestepLabel) {
-    timestepLabel.textContent = `(t=${timestep})`;
-  }
-}
-
-function updateAssignedStarGraph(targetId, savedConfig, weights, ratioValue) {
-  if (!targetId) {
-    return;
-  }
-
-  assignConfigurationToStar(targetId, savedConfig);
-  renderStarGraph(weights, targetId, ratioValue);
 }
 
 function observeResize(container) {
@@ -150,8 +130,14 @@ export function initNonPropMds(dataset, cluster_attr) {
       const targetId = getStarTarget();
       try {
         const { savedConfig, timestep } = await persistConfiguration(points, ratio, weights, dataset, cluster_attr);
-        updateSavedConfigurationUi(status, timestepLabel, timestep);
-        updateAssignedStarGraph(targetId, savedConfig, weights, ratio);
+        status.textContent = `Configuration saved (t=${timestep}).`;
+        if (timestepLabel) {
+          timestepLabel.textContent = `(t=${timestep})`;
+        }
+        if (targetId) {
+          assignConfigurationToStar(targetId, savedConfig);
+          renderStarGraph(weights, targetId, ratio);
+        }
         renderRateoChart();
       } catch (error) {
         status.textContent = `Save failed: ${error.message}`;

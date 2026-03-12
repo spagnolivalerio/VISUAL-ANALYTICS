@@ -8,21 +8,6 @@
     <link rel="stylesheet" href="css/sidebar.css" />
   </head>
   <body>
-    <button
-      class="sidebar-toggle"
-      id="menu-button"
-      type="button"
-      aria-controls="app-sidebar"
-      aria-expanded="false"
-    >
-      <span class="sidebar-toggle-icon" aria-hidden="true">
-        <span></span>
-        <span></span>
-        <span></span>
-      </span>
-      <span>Menu</span>
-    </button>
-
     <aside id="app-sidebar" class="sidebar" aria-hidden="true">
       <div class="sidebar-header">
         <div class="sidebar-header-copy">
@@ -47,10 +32,25 @@
     <div class="sidebar-backdrop" aria-hidden="true"></div>
 
     <main class="page-shell">
-      <header class="page-header">
-        <h1>Wine MDS Visualization</h1>
-        <p>Classical Euclidean MDS vs non-proportional weighted Euclidean MDS.</p>
-      </header>
+      <div class="top-bar">
+        <div class="top-bar-left">
+          <button
+            class="sidebar-toggle"
+            id="menu-button"
+            type="button"
+            aria-controls="app-sidebar"
+            aria-expanded="false"
+          >
+            <span class="sidebar-toggle-icon" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </span>
+            <span>Menu</span>
+          </button>
+        </div>
+        <div class="top-bar-content" aria-hidden="true"></div>
+      </div>
 
       <div class="page-content">
         <section class="top-row" aria-label="MDS plots and weights">
