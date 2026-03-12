@@ -4,7 +4,7 @@ const DEFAULT_SIZE = 220;
 const LABEL_OFFSET = 10;
 const LABEL_CLAMP = 8;
 const LABEL_CHAR_WIDTH = 6;
-const LABEL_HEIGHT = 10;
+const LABEL_LINE_HEIGHT = 12;
 
 function buildPath(points) {
   if (!points.length) {
@@ -80,6 +80,62 @@ function getChartGeometry(labels, width, height) {
   };
 }
 
+function splitLabelTokens(label) {
+  return String(label)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[\s_-]+/)
+    .filter(Boolean);
+}
+
+function chunkToken(token, maxCharsPerLine) {
+  const chunks = [];
+  for (let index = 0; index < token.length; index += maxCharsPerLine) {
+    chunks.push(token.slice(index, index + maxCharsPerLine));
+  }
+  return chunks;
+}
+
+function wrapLabelText(label, maxCharsPerLine) {
+  const normalizedMax = Math.max(4, maxCharsPerLine);
+  const tokens = splitLabelTokens(label);
+  if (!tokens.length) {
+    return { text: String(label), lineCount: 1, maxLineLength: String(label).length };
+  }
+
+  const lines = [];
+  let currentLine = "";
+
+  tokens.forEach((token) => {
+    const parts = token.length > normalizedMax ? chunkToken(token, normalizedMax) : [token];
+
+    parts.forEach((part) => {
+      const nextLine = currentLine ? `${currentLine} ${part}` : part;
+      if (nextLine.length <= normalizedMax) {
+        currentLine = nextLine;
+        return;
+      }
+
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+      currentLine = part;
+    });
+  });
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  const text = lines.join("\n");
+  const maxLineLength = lines.reduce((max, line) => Math.max(max, line.length), 0);
+  return { text, lineCount: lines.length, maxLineLength };
+}
+
+function getMaxCharsPerLine(geometry) {
+  const estimatedLabelWidth = Math.max(42, Math.min(geometry.radius * 0.85, geometry.centerX * 0.9));
+  return Math.floor(estimatedLabelWidth / LABEL_CHAR_WIDTH);
+}
+
 function clampLabelPosition(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -123,6 +179,8 @@ function getClampedLabelCoordinates({ width, height, x, y, textWidth, textHeight
 }
 
 function buildAxes(labels, geometry, width, height) {
+  const maxCharsPerLine = getMaxCharsPerLine(geometry);
+
   return labels.map((label, index) => {
     const angle = (index / geometry.totalAxes) * Math.PI * 2;
     const cos = Math.cos(angle);
@@ -131,7 +189,8 @@ function buildAxes(labels, geometry, width, height) {
     const y2 = geometry.centerY + sin * geometry.radius;
     const labelX = geometry.centerX + cos * (geometry.radius + LABEL_OFFSET);
     const labelY = geometry.centerY + sin * (geometry.radius + LABEL_OFFSET);
-    const textWidth = String(label).length * LABEL_CHAR_WIDTH;
+    const wrappedLabel = wrapLabelText(label, maxCharsPerLine);
+    const textWidth = wrappedLabel.maxLineLength * LABEL_CHAR_WIDTH;
     const { align, baseline } = getLabelAlignment(cos, sin);
     const clamped = getClampedLabelCoordinates({
       width,
@@ -139,13 +198,13 @@ function buildAxes(labels, geometry, width, height) {
       x: labelX,
       y: labelY,
       textWidth,
-      textHeight: LABEL_HEIGHT,
+      textHeight: wrappedLabel.lineCount * LABEL_LINE_HEIGHT,
       align,
       baseline,
     });
 
     return {
-      label,
+      label: wrappedLabel.text,
       x1: geometry.centerX,
       y1: geometry.centerY,
       x2,
@@ -207,6 +266,8 @@ function buildStarGraphSpec(width, height, axes, series) {
             x: { field: "lx" },
             y: { field: "ly" },
             text: { field: "label" },
+            lineBreak: { value: "\n" },
+            lineHeight: { value: LABEL_LINE_HEIGHT },
             align: { field: "align" },
             baseline: { field: "baseline" },
             fontSize: { value: 10 },
