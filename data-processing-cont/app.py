@@ -60,10 +60,24 @@ def ensure_cluster_attr_exists(df, cluster_attr):
         raise ValueError(f"Unknown cluster_attr '{cluster_attr}'")
 
 
+def get_numeric_feature_columns(df, cluster_attr):
+    if df.empty:
+        raise ValueError("Dataset is empty")
+
+    sample_row = df.sample(n=1, random_state=SEED).iloc[0]
+    candidate_columns = [column for column in df.columns if column != cluster_attr]
+    numeric_columns = []
+    for column in candidate_columns:
+        if pd.notna(pd.to_numeric(sample_row[column], errors="coerce")):
+            numeric_columns.append(column)
+    if not numeric_columns:
+        raise ValueError("No numeric attributes available for MDS")
+    return numeric_columns
+
+
 def get_numeric_features(df, cluster_attr):
-    features = df.drop(columns=[cluster_attr], errors="ignore")
-    numeric_features = features.select_dtypes(include="number")
-    return numeric_features, numeric_features.columns.tolist()
+    numeric_columns = get_numeric_feature_columns(df, cluster_attr)
+    return df[numeric_columns].apply(pd.to_numeric, errors="coerce"), numeric_columns
 
 
 def scale_features(features):
@@ -225,12 +239,12 @@ def mds_classic():
         df = load_dataframe(context["dataset"])
         cluster_attr = context["cluster_attr"]
         ensure_cluster_attr_exists(df, cluster_attr)
+        features, _ = get_numeric_features(df, cluster_attr)
     except FileNotFoundError as exc:
         return jsonify(error=str(exc)), 400
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 
-    features = df.drop(columns=[cluster_attr])
     scaled = scale_features(features)
 
     mds = build_mds(n_components=2, metric=True, random_state=SEED)
@@ -259,11 +273,12 @@ def numeric_attributes():
     try:
         dataset = resolve_dataset_path(payload.get("dataset"))
         df = load_dataframe(dataset)
+        ensure_cluster_attr_exists(df, cluster_attr)
+        numeric_attributes = get_numeric_feature_columns(df, cluster_attr)
     except FileNotFoundError as exc:
         return jsonify(error=str(exc)), 400
-
-    feature_df = df.drop(columns=[cluster_attr], errors="ignore")
-    numeric_attributes = feature_df.select_dtypes(include="number").columns.tolist()
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
 
     return jsonify(numeric_attributes=numeric_attributes), 200
 
