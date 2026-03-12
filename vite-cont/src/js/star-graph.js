@@ -3,100 +3,178 @@ import embed from "vega-embed";
 const DEFAULT_SIZE = 220;
 const LABEL_OFFSET = 10;
 const LABEL_CLAMP = 8;
+const LABEL_CHAR_WIDTH = 6;
+const LABEL_HEIGHT = 10;
 
-//Building the vega sgv path string from the series points
 function buildPath(points) {
-  if (!points.length) return "";
+  if (!points.length) {
+    return "";
+  }
+
   const [first, ...rest] = points;
-  return `M ${first.x} ${first.y} ${rest.map((p) => `L ${p.x} ${p.y}`).join(" ")} Z`;
+  return `M ${first.x} ${first.y} ${rest.map((point) => `L ${point.x} ${point.y}`).join(" ")} Z`;
 }
 
 function formatRateo(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return null;
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return null;
+  }
+
   return Number(value).toFixed(3);
 }
 
-export async function renderStarGraph(weights, targetId, rateo = null) {
-  const container = document.getElementById(targetId);
-  if (!container) return;
+function getContainer(targetId) {
+  return document.getElementById(targetId);
+}
 
+function clearContainer(container) {
   container.innerHTML = "";
+}
 
-  if (!weights || !Object.keys(weights).length) {
-    container.textContent = "No configuration selected.";
+function renderEmptyState(container) {
+  container.textContent = "No configuration selected.";
+}
+
+function appendRateoBadge(container, rateo) {
+  const rateoText = formatRateo(rateo);
+  if (rateoText === null) {
     return;
   }
 
-  const rateoText = formatRateo(rateo);
-  if (rateoText !== null) {
-    const badge = document.createElement("div");
-    badge.className = "star-rateo";
-    badge.textContent = `ratio: ${rateoText}`;
-    container.appendChild(badge);
-  }
+  const badge = document.createElement("div");
+  badge.className = "star-rateo";
+  badge.textContent = `ratio: ${rateoText}`;
+  container.appendChild(badge);
+}
 
+function createEmbedTarget(container) {
   const embedTarget = document.createElement("div");
   embedTarget.className = "star-graph-embed";
   container.appendChild(embedTarget);
+  return embedTarget;
+}
 
-  const entries = Object.entries(weights);
-  const labels = entries.map(([key]) => key);
-  const values = entries.map(([, value]) => Number(value));
-
+function getDimensions(container) {
   const rect = container.getBoundingClientRect();
-  const width = Math.max(1, Math.round(rect.width) || DEFAULT_SIZE);
-  const height = Math.max(1, Math.round(rect.height) || DEFAULT_SIZE);
+  return {
+    width: Math.max(1, Math.round(rect.width) || DEFAULT_SIZE),
+    height: Math.max(1, Math.round(rect.height) || DEFAULT_SIZE),
+  };
+}
 
+function getWeightEntries(weights) {
+  return Object.entries(weights);
+}
+
+function getChartGeometry(labels, width, height) {
   const maxLabelLength = labels.reduce((max, label) => Math.max(max, String(label).length), 0);
   const minDim = Math.min(width, height);
   const estimatedLabelPx = maxLabelLength * 5 + LABEL_OFFSET;
   const labelSpace = Math.min(minDim * 0.10, estimatedLabelPx);
-  const radius = Math.max(0, minDim / 2 - labelSpace);
-  const centerX = width / 2;
-  const centerY = height / 2;
 
-  const n = labels.length || 1;
+  return {
+    radius: Math.max(0, minDim / 2 - labelSpace),
+    centerX: width / 2,
+    centerY: height / 2,
+    totalAxes: labels.length || 1,
+  };
+}
 
-  const axes = labels.map((label, i) => {
-    const angle = (i / n) * Math.PI * 2;
-    const x2 = centerX + Math.cos(angle) * radius;
-    const y2 = centerY + Math.sin(angle) * radius;
-    const lx = centerX + Math.cos(angle) * (radius + LABEL_OFFSET);
-    const ly = centerY + Math.sin(angle) * (radius + LABEL_OFFSET);
-    const labelText = String(label);
-    const textWidth = labelText.length * 6;
-    const textHeight = 10;
+function clampLabelPosition(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getLabelAlignment(cos, sin) {
+  return {
+    align: cos > 0.15 ? "left" : cos < -0.15 ? "right" : "center",
+    baseline: sin > 0.15 ? "top" : sin < -0.15 ? "bottom" : "middle",
+  };
+}
+
+function getClampedLabelCoordinates({ width, height, x, y, textWidth, textHeight, align, baseline }) {
+  let clampedX = x;
+  let clampedY = y;
+
+  if (align === "left") {
+    clampedX = clampLabelPosition(clampedX, clampedX, width - LABEL_CLAMP - textWidth);
+  } else if (align === "right") {
+    clampedX = clampLabelPosition(clampedX, LABEL_CLAMP + textWidth, clampedX);
+  } else {
+    clampedX = clampLabelPosition(
+      clampedX,
+      LABEL_CLAMP + textWidth / 2,
+      width - LABEL_CLAMP - textWidth / 2
+    );
+  }
+
+  if (baseline === "top") {
+    clampedY = clampLabelPosition(clampedY, clampedY, height - LABEL_CLAMP - textHeight);
+  } else if (baseline === "bottom") {
+    clampedY = clampLabelPosition(clampedY, LABEL_CLAMP + textHeight, clampedY);
+  } else {
+    clampedY = clampLabelPosition(
+      clampedY,
+      LABEL_CLAMP + textHeight / 2,
+      height - LABEL_CLAMP - textHeight / 2
+    );
+  }
+
+  return { x: clampedX, y: clampedY };
+}
+
+function buildAxes(labels, geometry, width, height) {
+  return labels.map((label, index) => {
+    const angle = (index / geometry.totalAxes) * Math.PI * 2;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    const align = cos > 0.15 ? "left" : cos < -0.15 ? "right" : "center";
-    const baseline = sin > 0.15 ? "top" : sin < -0.15 ? "bottom" : "middle";
-    let clampedX = lx;
-    let clampedY = ly;
-    if (align === "left") {
-      clampedX = Math.min(width - LABEL_CLAMP - textWidth, clampedX);
-    } else if (align === "right") {
-      clampedX = Math.max(LABEL_CLAMP + textWidth, clampedX);
-    } else {
-      clampedX = Math.min(width - LABEL_CLAMP - textWidth / 2, Math.max(LABEL_CLAMP + textWidth / 2, clampedX));
-    }
-    if (baseline === "top") {
-      clampedY = Math.min(height - LABEL_CLAMP - textHeight, clampedY);
-    } else if (baseline === "bottom") {
-      clampedY = Math.max(LABEL_CLAMP + textHeight, clampedY);
-    } else {
-      clampedY = Math.min(height - LABEL_CLAMP - textHeight / 2, Math.max(LABEL_CLAMP + textHeight / 2, clampedY));
-    }
-    return { label, x1: centerX, y1: centerY, x2, y2, lx: clampedX, ly: clampedY, align, baseline };
-  });
+    const x2 = geometry.centerX + cos * geometry.radius;
+    const y2 = geometry.centerY + sin * geometry.radius;
+    const labelX = geometry.centerX + cos * (geometry.radius + LABEL_OFFSET);
+    const labelY = geometry.centerY + sin * (geometry.radius + LABEL_OFFSET);
+    const textWidth = String(label).length * LABEL_CHAR_WIDTH;
+    const { align, baseline } = getLabelAlignment(cos, sin);
+    const clamped = getClampedLabelCoordinates({
+      width,
+      height,
+      x: labelX,
+      y: labelY,
+      textWidth,
+      textHeight: LABEL_HEIGHT,
+      align,
+      baseline,
+    });
 
-  const series = labels.map((label, i) => {
-    const angle = (i / n) * Math.PI * 2;
-    const value = Number(values[i]) || 0;
-    const r = Math.max(0, Math.min(1, value)) * radius;
-    return { label, value, x: centerX + Math.cos(angle) * r, y: centerY + Math.sin(angle) * r };
+    return {
+      label,
+      x1: geometry.centerX,
+      y1: geometry.centerY,
+      x2,
+      y2,
+      lx: clamped.x,
+      ly: clamped.y,
+      align,
+      baseline,
+    };
   });
+}
 
-  const spec = {
+function buildSeries(labels, values, geometry) {
+  return labels.map((label, index) => {
+    const angle = (index / geometry.totalAxes) * Math.PI * 2;
+    const value = Number(values[index]) || 0;
+    const radius = Math.max(0, Math.min(1, value)) * geometry.radius;
+
+    return {
+      label,
+      value,
+      x: geometry.centerX + Math.cos(angle) * radius,
+      y: geometry.centerY + Math.sin(angle) * radius,
+    };
+  });
+}
+
+function buildStarGraphSpec(width, height, axes, series) {
+  return {
     $schema: "https://vega.github.io/schema/vega/v5.json",
     width,
     height,
@@ -162,6 +240,32 @@ export async function renderStarGraph(weights, targetId, rateo = null) {
       },
     ],
   };
+}
+
+export async function renderStarGraph(weights, targetId, rateo = null) {
+  const container = getContainer(targetId);
+  if (!container) {
+    return;
+  }
+
+  clearContainer(container);
+
+  if (!weights || !Object.keys(weights).length) {
+    renderEmptyState(container);
+    return;
+  }
+
+  appendRateoBadge(container, rateo);
+  const embedTarget = createEmbedTarget(container);
+
+  const entries = getWeightEntries(weights);
+  const labels = entries.map(([key]) => key);
+  const values = entries.map(([, value]) => Number(value));
+  const { width, height } = getDimensions(container);
+  const geometry = getChartGeometry(labels, width, height);
+  const axes = buildAxes(labels, geometry, width, height);
+  const series = buildSeries(labels, values, geometry);
+  const spec = buildStarGraphSpec(width, height, axes, series);
 
   await embed(embedTarget, spec, { actions: false, renderer: "svg" });
 }

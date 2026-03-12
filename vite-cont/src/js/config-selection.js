@@ -1,4 +1,4 @@
-import { configurationMatchesContext } from "./config-store";
+import { configurationMatchesContext, getConfigurationByIdSync } from "./config-store";
 import { getCurrentContext } from "./app-context";
 
 const state = {
@@ -30,15 +30,23 @@ export function assignConfigurationToStar(targetId, config) {
   if (!targetId || !(targetId in state.starAssignments)) {
     return;
   }
-  state.starAssignments[targetId] = config || null;
+  state.starAssignments[targetId] = config?.id ?? null;
 }
 
-export function getAssignedConfiguration(targetId) {
+export function getAssignedConfigurationId(targetId) {
   return state.starAssignments[targetId] || null;
 }
 
+export function getAssignedConfiguration(targetId) {
+  const configId = getAssignedConfigurationId(targetId);
+  if (configId === null) {
+    return null;
+  }
+  return getConfigurationByIdSync(configId);
+}
+
 export function getAssignedTimestep(targetId) {
-  return state.starAssignments[targetId]?.timestep ?? null;
+  return getAssignedConfiguration(targetId)?.timestep ?? null;
 }
 
 export function clearAssignedConfiguration(targetId) {
@@ -50,7 +58,7 @@ export function clearAssignedConfiguration(targetId) {
 
 export function clearInvalidAssignments(context = getCurrentContext()) {
   Object.keys(state.starAssignments).forEach((targetId) => {
-    const config = state.starAssignments[targetId];
+    const config = getAssignedConfiguration(targetId);
     if (config && !configurationMatchesContext(config, context)) {
       state.starAssignments[targetId] = null;
     }
@@ -65,8 +73,8 @@ export function clearSelectionIfMissing(validIds) {
 
 export function clearAssignmentsIfMissing(validIds) {
   Object.keys(state.starAssignments).forEach((targetId) => {
-    const config = state.starAssignments[targetId];
-    if (config && !validIds.has(config.id)) {
+    const configId = getAssignedConfigurationId(targetId);
+    if (configId !== null && !validIds.has(configId)) {
       state.starAssignments[targetId] = null;
     }
   });

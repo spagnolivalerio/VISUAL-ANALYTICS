@@ -1,3 +1,4 @@
+import { requestAllAttributes, requestDatasets } from "./api";
 import { setCurrentClusterAttr, setCurrentDataset } from "./app-context";
 
 const sidebar = document.getElementById("app-sidebar");
@@ -7,94 +8,146 @@ const backdrop = document.querySelector(".sidebar-backdrop");
 const datasetsList = document.getElementById("datasets-list");
 const attributesList = document.getElementById("attributes-list");
 
-function renderAttributes(list) {
-  if (!attributesList) return;
-  attributesList.innerHTML = "";
-  if (!list.length) {
-    attributesList.innerHTML = "<li>No attributes</li>";
+const ATTRIBUTES_LOADING_LABEL = "Loading...";
+const ATTRIBUTES_ERROR_LABEL = "Error loading attributes";
+const NO_ATTRIBUTES_LABEL = "No attributes";
+const NO_DATASETS_LABEL = "No datasets";
+const DATASETS_ERROR_LABEL = "Error loading datasets";
+
+function createListItem(label, onClick = null) {
+  const li = document.createElement("li");
+  li.textContent = label;
+
+  if (onClick) {
+    li.style.cursor = "pointer";
+    li.addEventListener("click", onClick);
+  }
+
+  return li;
+}
+
+function renderList(listElement, items, emptyLabel, createItem) {
+  if (!listElement) {
     return;
   }
-  list.forEach((name) => {
-    const li = document.createElement("li");
-    li.textContent = name;
-    if (name !== "Loading..." && name !== "Error loading attributes" && name !== "No attributes") {
-      li.style.cursor = "pointer";
-      li.addEventListener("click", () => {
-        setCurrentClusterAttr(name);
-        location.reload();
-      });
-    }
-    attributesList.appendChild(li);
+
+  listElement.innerHTML = "";
+  if (!items.length) {
+    listElement.appendChild(createListItem(emptyLabel));
+    return;
+  }
+
+  items.forEach((item) => {
+    listElement.appendChild(createItem(item));
   });
 }
 
-if (datasetsList) {
-  datasetsList.innerHTML = "<li>Loading...</li>";
-  fetch("/api/dataset")
-    .then((res) => res.json())
-    .then((data) => {
-      const datasets = Array.isArray(data.datasets) ? data.datasets : [];
-      datasetsList.innerHTML = "";
-      if (!datasets.length) {
-        datasetsList.innerHTML = "<li>No datasets</li>";
-        return;
-      }
-      datasets.forEach((name) => {
-        const li = document.createElement("li");
-        li.textContent = name;
-        li.style.cursor = "pointer";
-        li.addEventListener("click", () => {
-          setCurrentDataset(name);
-          setCurrentClusterAttr(null);
-          renderAttributes(["Loading..."]);
-          fetch("/api/all_attributes", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ dataset: name }),
-          })
-            .then((res) => res.json())
-            .then((attrData) => {
-              const attrs = Array.isArray(attrData.attributes) ? attrData.attributes : [];
-              renderAttributes(attrs);
-            })
-            .catch(() => {
-              renderAttributes(["Error loading attributes"]);
-            });
-        });
-        datasetsList.appendChild(li);
-      });
+function renderAttributes(items) {
+  renderList(attributesList, items, NO_ATTRIBUTES_LABEL, (name) => {
+    const isClickable =
+      name !== ATTRIBUTES_LOADING_LABEL &&
+      name !== ATTRIBUTES_ERROR_LABEL &&
+      name !== NO_ATTRIBUTES_LABEL;
+
+    return createListItem(name, isClickable ? () => handleAttributeSelection(name) : null);
+  });
+}
+
+function renderDatasets(items) {
+  renderList(datasetsList, items, NO_DATASETS_LABEL, (name) =>
+    createListItem(name, () => {
+      handleDatasetSelection(name);
     })
-    .catch(() => {
-      datasetsList.innerHTML = "<li>Error loading datasets</li>";
-    });
+  );
 }
 
-if (sidebar && toggle && closeBtn && backdrop) {
-  const open = () => {
-    sidebar.classList.add("is-open");
-    backdrop.classList.add("is-visible");
-    toggle.setAttribute("aria-expanded", "true");
-    sidebar.setAttribute("aria-hidden", "false");
-    toggle.style.display = "none";
-  };
-
-  const close = () => {
-    sidebar.classList.remove("is-open");
-    backdrop.classList.remove("is-visible");
-    toggle.setAttribute("aria-expanded", "false");
-    sidebar.setAttribute("aria-hidden", "true");
-    toggle.style.display = "";
-  };
-
-  toggle.addEventListener("click", (event) => {
-    event.stopPropagation();
-    if (sidebar.classList.contains("is-open")) {
-      close();
-    } else {
-      open();
-    }
-  });
-
-  closeBtn.addEventListener("click", close);
-  backdrop.addEventListener("click", close);
+function handleAttributeSelection(name) {
+  setCurrentClusterAttr(name);
+  location.reload();
 }
+
+async function loadAttributes(datasetName) {
+  try {
+    const response = await requestAllAttributes(datasetName);
+    const payload = await response.json();
+    const attributes = Array.isArray(payload.attributes) ? payload.attributes : [];
+    renderAttributes(attributes);
+  } catch (error) {
+    renderAttributes([ATTRIBUTES_ERROR_LABEL]);
+  }
+}
+
+function handleDatasetSelection(name) {
+  setCurrentDataset(name);
+  setCurrentClusterAttr(null);
+  renderAttributes([ATTRIBUTES_LOADING_LABEL]);
+  loadAttributes(name);
+}
+
+async function initDatasetsList() {
+  if (!datasetsList) {
+    return;
+  }
+
+  datasetsList.innerHTML = "<li>Loading...</li>";
+
+  try {
+    const response = await requestDatasets();
+    const payload = await response.json();
+    const datasets = Array.isArray(payload.datasets) ? payload.datasets : [];
+    renderDatasets(datasets);
+  } catch (error) {
+    datasetsList.innerHTML = `<li>${DATASETS_ERROR_LABEL}</li>`;
+  }
+}
+
+function openSidebar() {
+  if (!sidebar || !toggle || !backdrop) {
+    return;
+  }
+
+  sidebar.classList.add("is-open");
+  backdrop.classList.add("is-visible");
+  toggle.setAttribute("aria-expanded", "true");
+  sidebar.setAttribute("aria-hidden", "false");
+  toggle.style.display = "none";
+}
+
+function closeSidebar() {
+  if (!sidebar || !toggle || !backdrop) {
+    return;
+  }
+
+  sidebar.classList.remove("is-open");
+  backdrop.classList.remove("is-visible");
+  toggle.setAttribute("aria-expanded", "false");
+  sidebar.setAttribute("aria-hidden", "true");
+  toggle.style.display = "";
+}
+
+function toggleSidebar(event) {
+  event.stopPropagation();
+
+  if (!sidebar) {
+    return;
+  }
+
+  if (sidebar.classList.contains("is-open")) {
+    closeSidebar();
+  } else {
+    openSidebar();
+  }
+}
+
+function initSidebarToggle() {
+  if (!sidebar || !toggle || !closeBtn || !backdrop) {
+    return;
+  }
+
+  toggle.addEventListener("click", toggleSidebar);
+  closeBtn.addEventListener("click", closeSidebar);
+  backdrop.addEventListener("click", closeSidebar);
+}
+
+initDatasetsList();
+initSidebarToggle();

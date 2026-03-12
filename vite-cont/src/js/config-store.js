@@ -25,6 +25,10 @@ function readStore() {
   }
 }
 
+export function getConfigurationByIdSync(id) {
+  return readStore().find((item) => item.id === id) || null;
+}
+
 function writeStore(items) {
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
@@ -90,7 +94,7 @@ export async function deleteConfiguration(id) {
 }
 
 export async function getConfigurationById(id) {
-  return readStore().find((item) => item.id === id) || null;
+  return getConfigurationByIdSync(id);
 }
 
 export function configurationMatchesContext(config, { dataset, clusterAttr }) {
