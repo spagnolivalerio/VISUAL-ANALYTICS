@@ -2,7 +2,7 @@ import { requestNonPropMds } from "./api";
 import { getCurrentContext } from "./app-context";
 import { assignConfigurationToStar, getStarTarget } from "./config-selection";
 import { getNextTimestep, saveConfiguration } from "./config-store";
-import { configureCentroidToggle, parseMdsJsonResponse, renderMdsPlot } from "./mds-shared";
+import { configureCentroidToggle, configureLegendToggle, parseMdsJsonResponse, renderMdsPlot } from "./mds-shared";
 import { renderRateoChart } from "./rateo-chart";
 import { renderStarGraph } from "./star-graph";
 import { getWeightsFromPanel } from "./weights-panel";
@@ -115,6 +115,7 @@ export function initNonPropMds(dataset, cluster_attr) {
   const runButton = document.getElementById("run-nonprop-btn");
   const status = document.getElementById("nonprop-status");
   const toggleButton = document.getElementById("toggle-centroids-nonprop");
+  const legendButton = document.getElementById("toggle-legend-nonprop");
   const timestepLabel = document.getElementById("nonprop-timestep");
 
   if (!container || !runButton || !status) {
@@ -122,6 +123,7 @@ export function initNonPropMds(dataset, cluster_attr) {
   }
 
   configureCentroidToggle(container, toggleButton);
+  configureLegendToggle(container, legendButton);
 
   container.textContent = "Choose appropriate weights and click 'Run' to compute MDS.";
   container.classList.add("plot-placeholder");

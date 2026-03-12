@@ -128,6 +128,35 @@ function applyCentroidVisibility(centroidLayer, showCentroids) {
     .style("pointer-events", showCentroids ? "auto" : "none");
 }
 
+function renderLegend(container, labels, color, showLegend) {
+  const legend = document.createElement("div");
+  legend.className = "plot-legend";
+  legend.hidden = !showLegend;
+
+  const list = document.createElement("div");
+  list.className = "plot-legend-list";
+
+  labels.forEach((label) => {
+    const item = document.createElement("div");
+    item.className = "plot-legend-item";
+
+    const swatch = document.createElement("span");
+    swatch.className = "plot-legend-swatch";
+    swatch.style.backgroundColor = color(label);
+
+    const text = document.createElement("span");
+    text.className = "plot-legend-label";
+    text.textContent = String(label);
+
+    item.appendChild(swatch);
+    item.appendChild(text);
+    list.appendChild(item);
+  });
+
+  legend.appendChild(list);
+  container.appendChild(legend);
+}
+
 function drawClusterLinks(linksLayer, cluster, centroid, x, y) {
   const lines = linksLayer.selectAll("line").data(cluster, (point) => point.id);
   lines.join(
@@ -388,6 +417,34 @@ export function configureCentroidToggle(container, toggleButton) {
   toggleButton._centroidToggleBound = true;
 }
 
+export function configureLegendToggle(container, toggleButton) {
+  if (!container.dataset.showLegend) {
+    container.dataset.showLegend = "false";
+  }
+
+  if (!toggleButton) {
+    return;
+  }
+
+  toggleButton.setAttribute("aria-pressed", container.dataset.showLegend);
+  if (toggleButton._legendToggleBound) {
+    return;
+  }
+
+  toggleButton.addEventListener("click", () => {
+    const next = container.dataset.showLegend !== "true";
+    container.dataset.showLegend = next ? "true" : "false";
+    toggleButton.setAttribute("aria-pressed", container.dataset.showLegend);
+
+    const legend = container.querySelector(".plot-legend");
+    if (legend) {
+      legend.hidden = !next;
+    }
+  });
+
+  toggleButton._legendToggleBound = true;
+}
+
 export async function parseMdsJsonResponse(response) {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
@@ -423,6 +480,7 @@ export function renderMdsPlot({
   const circles = renderPoints(pointsLayer, points, x, y, color);
   const centroidCircles = renderCentroids(centroidLayer, centroids, x, y, color);
   applyCentroidVisibility(centroidLayer, showCentroids);
+  renderLegend(container, color.domain(), color, container.dataset.showLegend === "true");
 
   const selectionController = createSelectionController(
     points,
