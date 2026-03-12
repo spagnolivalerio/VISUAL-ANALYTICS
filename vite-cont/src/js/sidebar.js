@@ -1,5 +1,5 @@
 import { requestAllAttributes, requestDatasets } from "./api";
-import { setCurrentClusterAttr, setCurrentDataset } from "./app-context";
+import { getCurrentDataset, setCurrentClusterAttr, setCurrentDataset } from "./app-context";
 
 const sidebar = document.getElementById("app-sidebar");
 const toggle = document.querySelector(".sidebar-toggle");
@@ -14,9 +14,10 @@ const NO_ATTRIBUTES_LABEL = "No attributes";
 const NO_DATASETS_LABEL = "No datasets";
 const DATASETS_ERROR_LABEL = "Error loading datasets";
 
-function createListItem(label, onClick = null) {
+function createListItem(label, onClick = null, isSelected = false) {
   const li = document.createElement("li");
   li.textContent = label;
+  li.dataset.selected = isSelected ? "true" : "false";
 
   if (onClick) {
     li.style.cursor = "pointer";
@@ -54,10 +55,15 @@ function renderAttributes(items) {
 }
 
 function renderDatasets(items) {
+  const currentDataset = getCurrentDataset();
   renderList(datasetsList, items, NO_DATASETS_LABEL, (name) =>
-    createListItem(name, () => {
-      handleDatasetSelection(name);
-    })
+    createListItem(
+      name,
+      () => {
+        handleDatasetSelection(name);
+      },
+      name === currentDataset
+    )
   );
 }
 
@@ -80,6 +86,7 @@ async function loadAttributes(datasetName) {
 function handleDatasetSelection(name) {
   setCurrentDataset(name);
   setCurrentClusterAttr(null);
+  renderDatasets(Array.from(datasetsList?.querySelectorAll("li") || []).map((item) => item.textContent).filter(Boolean));
   renderAttributes([ATTRIBUTES_LOADING_LABEL]);
   loadAttributes(name);
 }
