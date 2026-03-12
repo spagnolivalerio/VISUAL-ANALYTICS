@@ -19,6 +19,7 @@ function createListItem(label, onClick = null, isSelected = false) {
   li.textContent = label;
   li.dataset.selected = isSelected ? "true" : "false";
 
+  // making the li clickable
   if (onClick) {
     li.style.cursor = "pointer";
     li.addEventListener("click", onClick);
