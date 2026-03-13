@@ -90,7 +90,7 @@ def build_points(embedding, label_values):
             "id": int(index + 1),
             "x": float(embedding[index, 0]),
             "y": float(embedding[index, 1]),
-            "class_label": label_values[index],
+            "cluster_attr": label_values[index],
         }
         for index in range(len(label_values))
     ]
@@ -129,7 +129,7 @@ def avg_pairwise_distance(items_a, items_b=None):
 def build_cluster_points(points):
     cluster_points = {}
     for point in points:
-        cluster_points.setdefault(point["class_label"], []).append(point)
+        cluster_points.setdefault(point["cluster_attr"], []).append(point)
     return cluster_points
 
 

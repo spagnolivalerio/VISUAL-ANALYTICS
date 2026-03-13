@@ -43,7 +43,8 @@ function buildScales(points, innerWidth, innerHeight) {
 }
 
 function buildColorScale(points) {
-  return d3.scaleOrdinal(d3.schemeTableau10).domain([...new Set(points.map((d) => d.class_label))]);
+  const s = new Set(points.map((d) => d.cluster_attr)) 
+  return d3.scaleOrdinal(d3.schemeTableau10).domain([...s]);
 }
 
 function renderAxes(g, x, y, innerWidth, innerHeight) {
@@ -75,7 +76,7 @@ function createLayers(g) {
 }
 
 function buildClusterData(points) {
-  const clusters = d3.group(points, (d) => d.class_label);
+  const clusters = d3.group(points, (d) => d.cluster_attr);
   const centroids = Array.from(clusters, ([label, items]) => ({
     label,
     x: d3.mean(items, (d) => d.x),
@@ -94,10 +95,10 @@ function renderPoints(pointsLayer, points, x, y, color) {
     .attr("cx", (d) => x(d.x))
     .attr("cy", (d) => y(d.y))
     .attr("r", POINT_RADIUS)
-    .attr("fill", (d) => color(d.class_label))
+    .attr("fill", (d) => color(d.cluster_attr))
     .attr("opacity", DEFAULT_POINT_OPACITY);
 
-  circles.append("title").text((d) => `id: ${d.id}, class: ${d.class_label}`);
+  circles.append("title").text((d) => `id: ${d.id}, class: ${d.cluster_attr}`);
   return circles;
 }
 
@@ -202,7 +203,7 @@ function createSelectionController(points, clusters, centroids, circles, centroi
     }
     resetHighlight();
     circles.attr("opacity", DIMMED_POINT_OPACITY);
-    circles.filter((p) => p.class_label === label).attr("opacity", ACTIVE_POINT_OPACITY);
+    circles.filter((p) => p.cluster_attr === label).attr("opacity", ACTIVE_POINT_OPACITY);
     centroidCircles.attr("opacity", DIMMED_CENTROID_OPACITY);
     centroidCircles.filter((c) => c.label === label).attr("opacity", ACTIVE_CENTROID_OPACITY);
     drawClusterLinks(linksLayer, cluster, centroid, x, y);
@@ -215,20 +216,20 @@ function createSelectionController(points, clusters, centroids, circles, centroi
       return;
     }
 
-    const centroid = centroids.find((c) => c.label === selected.class_label);
+    const centroid = centroids.find((c) => c.label === selected.cluster_attr);
     if (!centroid) {
       return;
     }
     resetHighlight();
     circles.attr("opacity", DIMMED_POINT_OPACITY);
-    circles.filter((p) => p.class_label === selected.class_label).attr("opacity", ACTIVE_POINT_OPACITY);
+    circles.filter((p) => p.cluster_attr === selected.cluster_attr).attr("opacity", ACTIVE_POINT_OPACITY);
     circles
       .filter((p) => p.id === selected.id)
       .attr("opacity", ACTIVE_CENTROID_OPACITY)
       .attr("r", ACTIVE_POINT_RADIUS);
     centroidCircles.attr("opacity", DIMMED_CENTROID_OPACITY);
     centroidCircles
-      .filter((c) => c.label === selected.class_label)
+      .filter((c) => c.label === selected.cluster_attr)
       .attr("opacity", ACTIVE_CENTROID_OPACITY);
 
     drawPointLink(linksLayer, selected, centroid, x, y);
