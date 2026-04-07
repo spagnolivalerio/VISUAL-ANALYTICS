@@ -12,10 +12,7 @@
         "d3": "^7.9.0",
         "papaparse": "^5.4.1",
         "mdsjs": "^1.0.0",
-        "ml-distance-euclidean": "^2.0.0",
-        "vega": "^5.25.0",
-        "vega-lite": "^5.17.0",
-        "vega-embed": "^6.24.0"
+        "ml-distance-euclidean": "^2.0.0"
     },
     "devDependencies": {
         "vite": "^5.0.0"

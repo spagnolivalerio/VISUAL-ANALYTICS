@@ -90,7 +90,29 @@ export function renderNonPropFromSaved(config) {
   }
 }
 
-export function initNonPropMds(dataset, cluster_attr) {
+export function resetNonPropMds() {
+  const container = document.getElementById("mds-non-proportional-container");
+  const status = document.getElementById("nonprop-status");
+  const timestepLabel = document.getElementById("nonprop-timestep");
+
+  lastPoints = [];
+  nonPropSelectionState.clear();
+
+  if (container) {
+    container.classList.add("plot-placeholder");
+    container.textContent = "Adjust the weights and run Non-Proportional MDS.";
+  }
+
+  if (status) {
+    status.textContent = "";
+  }
+
+  if (timestepLabel) {
+    timestepLabel.textContent = "";
+  }
+}
+
+export function initNonPropMds() {
   const container = document.getElementById("mds-non-proportional-container");
   const runButton = document.getElementById("run-nonprop-btn");
   const status = document.getElementById("nonprop-status");
@@ -105,11 +127,19 @@ export function initNonPropMds(dataset, cluster_attr) {
   configureCentroidToggle(container, toggleButton);
   configureLegendToggle(container, legendButton);
 
-  container.textContent = "Choose appropriate weights and click 'Run' to compute MDS.";
-  container.classList.add("plot-placeholder");
+  resetNonPropMds();
+
+  if (runButton.dataset.bound === "true") {
+    return;
+  }
 
   runButton.addEventListener("click", async () => {
+    const { dataset, clusterAttr } = getCurrentContext();
     const weights = getWeightsFromPanel();
+    if (!dataset || !clusterAttr) {
+      status.textContent = "Select a dataset and cluster attribute first.";
+      return;
+    }
     if (!Object.keys(weights).length) {
       status.textContent = "No weights available.";
       return;
@@ -119,7 +149,7 @@ export function initNonPropMds(dataset, cluster_attr) {
     status.textContent = "Computing...";
 
     try {
-      const { points, ratio } = await loadNonPropPoints(weights, dataset, cluster_attr);
+      const { points, ratio } = await loadNonPropPoints(weights, dataset, clusterAttr);
       if (!points.length) {
         throw new Error("No points returned.");
       }
@@ -129,7 +159,7 @@ export function initNonPropMds(dataset, cluster_attr) {
 
       const targetId = getStarTarget();
       try {
-        const { savedConfig, timestep } = await persistConfiguration(points, ratio, weights, dataset, cluster_attr);
+        const { savedConfig, timestep } = await persistConfiguration(points, ratio, weights, dataset, clusterAttr);
         status.textContent = `Configuration saved (t=${timestep}).`;
         if (timestepLabel) {
           timestepLabel.textContent = `(t=${timestep})`;
@@ -150,4 +180,6 @@ export function initNonPropMds(dataset, cluster_attr) {
       runButton.disabled = false;
     }
   });
+
+  runButton.dataset.bound = "true";
 }

@@ -194,6 +194,12 @@ export async function renderWeightsPanel(weights = null, datasetArg, clusterAttr
   }
 
   const { dataset, clusterAttr } = getResolvedContext(datasetArg, clusterAttrArg);
+  if (!dataset) {
+    list.textContent = "Select a dataset to load the weights panel.";
+    setPanelContext(null, null, []);
+    return;
+  }
+
   list.textContent = LOADING_MESSAGE;
 
   try {

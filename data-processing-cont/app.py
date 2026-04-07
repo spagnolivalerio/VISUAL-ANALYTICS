@@ -44,9 +44,9 @@ def get_request_payload():
     return request.get_json(silent=True) or {}
 
 
-def resolve_mds_context(payload):
+def resolve_request_context(payload):
     return {
-        "cluster_attr": payload.get("cluster_attr", DEFAULT_CLUSTER_ATTR),
+        "requested_cluster_attr": payload.get("cluster_attr"),
         "dataset": resolve_dataset_path(payload.get("dataset")),
     }
 
@@ -55,9 +55,32 @@ def load_dataframe(dataset_path):
     return pd.read_csv(dataset_path, sep=None, engine="python", decimal=",")
 
 
-def ensure_cluster_attr_exists(df, cluster_attr):
-    if cluster_attr not in df.columns:
-        raise ValueError(f"Unknown cluster_attr '{cluster_attr}'")
+def infer_default_cluster_attr(df):
+    if df.empty and not len(df.columns):
+        raise ValueError("Dataset has no columns")
+
+    if DEFAULT_CLUSTER_ATTR in df.columns:
+        return DEFAULT_CLUSTER_ATTR
+
+    categorical_columns = [
+        column
+        for column in df.columns
+        if not pd.api.types.is_numeric_dtype(df[column])
+    ]
+    if categorical_columns:
+        return categorical_columns[0]
+
+    return df.columns[0]
+
+
+def resolve_cluster_attr(df, requested_cluster_attr=None):
+    if requested_cluster_attr is None:
+        return infer_default_cluster_attr(df)
+
+    if requested_cluster_attr not in df.columns:
+        raise ValueError(f"Unknown cluster_attr '{requested_cluster_attr}'")
+
+    return requested_cluster_attr
 
 
 def get_numeric_feature_columns(df, cluster_attr):
@@ -235,10 +258,9 @@ def mds_classic():
     payload = get_request_payload()
 
     try:
-        context = resolve_mds_context(payload)
+        context = resolve_request_context(payload)
         df = load_dataframe(context["dataset"])
-        cluster_attr = context["cluster_attr"]
-        ensure_cluster_attr_exists(df, cluster_attr)
+        cluster_attr = resolve_cluster_attr(df, context["requested_cluster_attr"])
         features, _ = get_numeric_features(df, cluster_attr)
     except FileNotFoundError as exc:
         return jsonify(error=str(exc)), 400
@@ -268,19 +290,18 @@ def mds_classic():
 @app.post("/numeric-attributes")
 def numeric_attributes():
     payload = get_request_payload()
-    cluster_attr = payload.get("cluster_attr", DEFAULT_CLUSTER_ATTR)
 
     try:
-        dataset = resolve_dataset_path(payload.get("dataset"))
-        df = load_dataframe(dataset)
-        ensure_cluster_attr_exists(df, cluster_attr)
+        context = resolve_request_context(payload)
+        df = load_dataframe(context["dataset"])
+        cluster_attr = resolve_cluster_attr(df, context["requested_cluster_attr"])
         numeric_attributes = get_numeric_feature_columns(df, cluster_attr)
     except FileNotFoundError as exc:
         return jsonify(error=str(exc)), 400
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
 
-    return jsonify(numeric_attributes=numeric_attributes), 200
+    return jsonify(numeric_attributes=numeric_attributes, cluster_attr=cluster_attr), 200
 
 
 @app.post("/all_attributes")
@@ -288,12 +309,15 @@ def get_attributes():
     payload = get_request_payload()
 
     try:
-        dataset = resolve_dataset_path(payload.get("dataset"))
-        df = load_dataframe(dataset)
+        context = resolve_request_context(payload)
+        df = load_dataframe(context["dataset"])
+        cluster_attr = resolve_cluster_attr(df, context["requested_cluster_attr"])
     except FileNotFoundError as exc:
         return jsonify(error=str(exc)), 400
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
 
-    return jsonify(attributes=df.columns.tolist()), 200
+    return jsonify(attributes=df.columns.tolist(), cluster_attr=cluster_attr), 200
 
 
 @app.post("/mds-nonprop")
@@ -304,9 +328,9 @@ def mds_nonprop():
         return jsonify(error="Missing JSON field 'weights'"), 400
 
     try:
-        context = resolve_mds_context(payload)
+        context = resolve_request_context(payload)
         df = load_dataframe(context["dataset"])
-        cluster_attr = context["cluster_attr"]
+        cluster_attr = resolve_cluster_attr(df, context["requested_cluster_attr"])
         numeric_features, attributes = get_numeric_features(df, cluster_attr)
         weights = parse_weights(weights_payload, attributes)
     except FileNotFoundError as exc:

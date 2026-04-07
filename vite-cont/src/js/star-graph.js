@@ -1,19 +1,18 @@
-import embed from "vega-embed";
+import * as d3 from "d3";
 
 const DEFAULT_SIZE = 220;
-const LABEL_OFFSET = 10;
-const LABEL_CLAMP = 8;
-const LABEL_CHAR_WIDTH = 6;
+const MIN_LABEL_CHARS = 4;
+const MAX_LABEL_CHARS = 12;
+const LABEL_DISTANCE = 16;
+const LABEL_CLAMP = 10;
+const LABEL_CHAR_WIDTH = 6.4;
 const LABEL_LINE_HEIGHT = 12;
+const MIN_RADIUS = 30;
+const GRID_LEVELS = 4;
 
-function buildPath(points) {
-  if (!points.length) {
-    return "";
-  }
-
-  const [first, ...rest] = points;
-  return `M ${first.x} ${first.y} ${rest.map((point) => `L ${point.x} ${point.y}`).join(" ")} Z`;
-}
+const chartState = new Map();
+const resizeObserverByTarget = new Map();
+const resizeFrameByTarget = new Map();
 
 function formatRateo(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
@@ -23,23 +22,35 @@ function formatRateo(value) {
   return Number(value).toFixed(3);
 }
 
-function appendRateoBadge(container, rateo) {
-  const rateoText = formatRateo(rateo);
-  if (rateoText === null) {
+function getRateoBadge(targetId) {
+  return document.getElementById(targetId.replace("star-graph", "star-rateo"));
+}
+
+function updateRateoBadge(targetId, rateo) {
+  const badge = getRateoBadge(targetId);
+  if (!badge) {
     return;
   }
 
-  const badge = document.createElement("div");
-  badge.className = "star-rateo";
+  const rateoText = formatRateo(rateo);
+  if (rateoText === null) {
+    badge.hidden = true;
+    badge.textContent = "";
+    return;
+  }
+
   badge.textContent = `ratio: ${rateoText}`;
-  container.appendChild(badge);
+  badge.hidden = false;
 }
 
-function createEmbedTarget(container) {
-  const embedTarget = document.createElement("div");
-  embedTarget.className = "star-graph-embed";
-  container.appendChild(embedTarget);
-  return embedTarget;
+function createChartRoot(container) {
+  const frame = document.createElement("div");
+  const surface = document.createElement("div");
+  frame.className = "star-graph-frame";
+  surface.className = "star-graph-embed";
+  frame.appendChild(surface);
+  container.appendChild(frame);
+  return d3.select(surface);
 }
 
 function getDimensions(container) {
@@ -50,17 +61,21 @@ function getDimensions(container) {
   };
 }
 
-function getChartGeometry(labels, width, height) {
-  const maxLabelLength = labels.reduce((max, label) => Math.max(max, String(label).length), 0);
-  const minDim = Math.min(width, height);
-  const estimatedLabelPx = maxLabelLength * 5 + LABEL_OFFSET;
-  const labelSpace = Math.min(minDim * 0.10, estimatedLabelPx);
+function getAccentPalette(targetId) {
+  if (targetId === "star-graph-1") {
+    return {
+      stroke: "#1f9d61",
+      fill: "rgba(31,157,97,0.16)",
+      pointFill: "#1f9d61",
+      glow: "rgba(31,157,97,0.14)",
+    };
+  }
 
   return {
-    radius: Math.max(0, minDim / 2 - labelSpace),
-    centerX: width / 2,
-    centerY: height / 2,
-    totalAxes: labels.length || 1,
+    stroke: "#dc4c43",
+    fill: "rgba(220,76,67,0.16)",
+    pointFill: "#dc4c43",
+    glow: "rgba(220,76,67,0.14)",
   };
 }
 
@@ -80,10 +95,10 @@ function chunkToken(token, maxCharsPerLine) {
 }
 
 function wrapLabelText(label, maxCharsPerLine) {
-  const normalizedMax = Math.max(4, maxCharsPerLine);
+  const normalizedMax = Math.max(MIN_LABEL_CHARS, maxCharsPerLine);
   const tokens = splitLabelTokens(label);
   if (!tokens.length) {
-    return { text: String(label), lineCount: 1, maxLineLength: String(label).length };
+    return { lines: [String(label)], lineCount: 1, maxLineLength: String(label).length };
   }
 
   const lines = [];
@@ -110,197 +125,284 @@ function wrapLabelText(label, maxCharsPerLine) {
     lines.push(currentLine);
   }
 
-  const text = lines.join("\n");
-  const maxLineLength = lines.reduce((max, line) => Math.max(max, line.length), 0);
-  return { text, lineCount: lines.length, maxLineLength };
-}
-
-function getMaxCharsPerLine(geometry) {
-  const estimatedLabelWidth = Math.max(42, Math.min(geometry.radius * 0.85, geometry.centerX * 0.9));
-  return Math.floor(estimatedLabelWidth / LABEL_CHAR_WIDTH);
-}
-
-function clampLabelPosition(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function getLabelAlignment(cos, sin) {
   return {
-    align: cos > 0.15 ? "left" : cos < -0.15 ? "right" : "center",
-    baseline: sin > 0.15 ? "top" : sin < -0.15 ? "bottom" : "middle",
+    lines,
+    lineCount: lines.length,
+    maxLineLength: lines.reduce((max, line) => Math.max(max, line.length), 0),
   };
 }
 
-function getClampedLabelCoordinates({ width, height, x, y, textWidth, textHeight, align, baseline }) {
+function getTextAnchor(cos) {
+  if (cos > 0.2) {
+    return "start";
+  }
+  if (cos < -0.2) {
+    return "end";
+  }
+  return "middle";
+}
+
+function getLabelBounds(x, y, textWidth, textHeight, textAnchor) {
+  const left =
+    textAnchor === "start" ? x : textAnchor === "end" ? x - textWidth : x - textWidth / 2;
+  const right =
+    textAnchor === "start" ? x + textWidth : textAnchor === "end" ? x : x + textWidth / 2;
+
   return {
-    x:
-      align === "left"
-        ? clampLabelPosition(x, x, width - LABEL_CLAMP - textWidth)
-        : align === "right"
-          ? clampLabelPosition(x, LABEL_CLAMP + textWidth, x)
-          : clampLabelPosition(x, LABEL_CLAMP + textWidth / 2, width - LABEL_CLAMP - textWidth / 2),
-    y:
-      baseline === "top"
-        ? clampLabelPosition(y, y, height - LABEL_CLAMP - textHeight)
-        : baseline === "bottom"
-          ? clampLabelPosition(y, LABEL_CLAMP + textHeight, y)
-          : clampLabelPosition(
-              y,
-              LABEL_CLAMP + textHeight / 2,
-              height - LABEL_CLAMP - textHeight / 2
-            ),
+    left,
+    right,
+    top: y - textHeight / 2,
+    bottom: y + textHeight / 2,
   };
 }
 
-function buildAxes(labels, geometry, width, height) {
-  const maxCharsPerLine = getMaxCharsPerLine(geometry);
+function buildAxisMetadata(labels, maxCharsPerLine) {
+  const totalAxes = labels.length || 1;
 
   return labels.map((label, index) => {
-    const angle = (index / geometry.totalAxes) * Math.PI * 2;
+    const angle = -Math.PI / 2 + (index / totalAxes) * Math.PI * 2;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    const x2 = geometry.centerX + cos * geometry.radius;
-    const y2 = geometry.centerY + sin * geometry.radius;
-    const labelX = geometry.centerX + cos * (geometry.radius + LABEL_OFFSET);
-    const labelY = geometry.centerY + sin * (geometry.radius + LABEL_OFFSET);
     const wrappedLabel = wrapLabelText(label, maxCharsPerLine);
-    const textWidth = wrappedLabel.maxLineLength * LABEL_CHAR_WIDTH;
-    const { align, baseline } = getLabelAlignment(cos, sin);
-    const clamped = getClampedLabelCoordinates({
-      width,
-      height,
-      x: labelX,
-      y: labelY,
-      textWidth,
-      textHeight: wrappedLabel.lineCount * LABEL_LINE_HEIGHT,
-      align,
-      baseline,
-    });
-
-    return {
-      label: wrappedLabel.text,
-      x1: geometry.centerX,
-      y1: geometry.centerY,
-      x2,
-      y2,
-      lx: clamped.x,
-      ly: clamped.y,
-      align,
-      baseline,
-    };
-  });
-}
-
-function buildSeries(labels, values, geometry) {
-  return labels.map((label, index) => {
-    const angle = (index / geometry.totalAxes) * Math.PI * 2;
-    const value = Number(values[index]) || 0;
-    const radius = Math.max(0, Math.min(1, value)) * geometry.radius;
 
     return {
       label,
-      value,
-      x: geometry.centerX + Math.cos(angle) * radius,
-      y: geometry.centerY + Math.sin(angle) * radius,
+      index,
+      angle,
+      cos,
+      sin,
+      textAnchor: getTextAnchor(cos),
+      lines: wrappedLabel.lines,
+      textWidth: wrappedLabel.maxLineLength * LABEL_CHAR_WIDTH,
+      textHeight: wrappedLabel.lineCount * LABEL_LINE_HEIGHT,
     };
   });
 }
 
-function buildStarGraphSpec(width, height, axes, series) {
+function radiusFits(axisMetadata, radius, width, height, centerX, centerY) {
+  return axisMetadata.every((axis) => {
+    const labelX = centerX + axis.cos * (radius + LABEL_DISTANCE);
+    const labelY = centerY + axis.sin * (radius + LABEL_DISTANCE);
+    const bounds = getLabelBounds(labelX, labelY, axis.textWidth, axis.textHeight, axis.textAnchor);
+
+    return (
+      bounds.left >= LABEL_CLAMP &&
+      bounds.right <= width - LABEL_CLAMP &&
+      bounds.top >= LABEL_CLAMP &&
+      bounds.bottom <= height - LABEL_CLAMP
+    );
+  });
+}
+
+function computeLayout(labels, width, height) {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const candidateChars = Math.max(
+    MIN_LABEL_CHARS,
+    Math.min(MAX_LABEL_CHARS, Math.floor(Math.min(width, height) / 22))
+  );
+
+  let bestLayout = null;
+
+  for (let chars = candidateChars; chars >= MIN_LABEL_CHARS; chars -= 1) {
+    const axisMetadata = buildAxisMetadata(labels, chars);
+    let radius = Math.max(0, Math.min(width, height) / 2 - LABEL_DISTANCE - LABEL_CLAMP);
+
+    while (radius > 0 && !radiusFits(axisMetadata, radius, width, height, centerX, centerY)) {
+      radius -= 2;
+    }
+
+    const layout = {
+      centerX,
+      centerY,
+      radius,
+      axisMetadata,
+    };
+
+    if (!bestLayout || radius > bestLayout.radius) {
+      bestLayout = layout;
+    }
+
+    if (radius >= MIN_RADIUS) {
+      return layout;
+    }
+  }
+
+  return bestLayout || { centerX, centerY, radius: 0, axisMetadata: [] };
+}
+
+function toCartesian(centerX, centerY, angle, radius) {
   return {
-    $schema: "https://vega.github.io/schema/vega/v5.json",
-    width,
-    height,
-    padding: 0,
-    autosize: "none",
-    data: [
-      { name: "axes", values: axes },
-      { name: "series", values: series },
-      { name: "polygon", values: [{ path: buildPath(series) }] },
-    ],
-    marks: [
-      {
-        type: "rule",
-        from: { data: "axes" },
-        encode: {
-          update: {
-            x: { field: "x1" },
-            y: { field: "y1" },
-            x2: { field: "x2" },
-            y2: { field: "y2" },
-            stroke: { value: "#c7d0db" },
-          },
-        },
-      },
-      {
-        type: "text",
-        from: { data: "axes" },
-        encode: {
-          update: {
-            x: { field: "lx" },
-            y: { field: "ly" },
-            text: { field: "label" },
-            lineBreak: { value: "\n" },
-            lineHeight: { value: LABEL_LINE_HEIGHT },
-            align: { field: "align" },
-            baseline: { field: "baseline" },
-            fontSize: { value: 10 },
-            fill: { value: "#425466" },
-          },
-        },
-      },
-      {
-        type: "path",
-        from: { data: "polygon" },
-        encode: {
-          update: {
-            path: { field: "path" },
-            fill: { value: "rgba(31,111,235,0.18)" },
-            stroke: { value: "#1f6feb" },
-            strokeWidth: { value: 1.5 },
-          },
-        },
-      },
-      {
-        type: "symbol",
-        from: { data: "series" },
-        encode: {
-          update: {
-            x: { field: "x" },
-            y: { field: "y" },
-            size: { value: 20 },
-            fill: { value: "#1f6feb" },
-          },
-        },
-      },
-    ],
+    x: centerX + Math.cos(angle) * radius,
+    y: centerY + Math.sin(angle) * radius,
   };
 }
 
-export async function renderStarGraph(weights, targetId, rateo = null) {
+function buildGridPolygons(layout) {
+  return d3.range(1, GRID_LEVELS + 1).map((level) => {
+    const radius = (layout.radius * level) / GRID_LEVELS;
+    return layout.axisMetadata.map((axis) => toCartesian(layout.centerX, layout.centerY, axis.angle, radius));
+  });
+}
+
+function buildDataPolygon(values, layout) {
+  return layout.axisMetadata.map((axis, index) => {
+    const radius = Math.max(0, Math.min(1, Number(values[index]) || 0)) * layout.radius;
+    return {
+      ...toCartesian(layout.centerX, layout.centerY, axis.angle, radius),
+      value: Number(values[index]) || 0,
+      label: axis.label,
+    };
+  });
+}
+
+function drawWrappedLabels(group, axisMetadata, layout) {
+  const labels = group
+    .selectAll("text")
+    .data(axisMetadata)
+    .join("text")
+    .attr("x", (axis) => layout.centerX + axis.cos * (layout.radius + LABEL_DISTANCE))
+    .attr("y", (axis) => layout.centerY + axis.sin * (layout.radius + LABEL_DISTANCE))
+    .attr("text-anchor", (axis) => axis.textAnchor)
+    .attr("fill", "#425466")
+    .attr("font-size", 10)
+    .attr("font-weight", 600);
+
+  labels
+    .selectAll("tspan")
+    .data((axis) =>
+      axis.lines.map((line, index) => ({
+        line,
+        offset:
+          (index - (axis.lines.length - 1) / 2) * LABEL_LINE_HEIGHT +
+          LABEL_LINE_HEIGHT * 0.35,
+      }))
+    )
+    .join("tspan")
+    .attr("x", function (_, index, nodes) {
+      return d3.select(nodes[index].parentNode).attr("x");
+    })
+    .attr("dy", 0)
+    .attr("y", function (datum, index, nodes) {
+      return Number(d3.select(nodes[index].parentNode).attr("y")) + datum.offset;
+    })
+    .text((datum) => datum.line);
+}
+
+function renderRadarChart(container, targetId, weights) {
+  const labels = Object.keys(weights);
+  const values = Object.values(weights);
+  const { width, height } = getDimensions(container);
+  const root = createChartRoot(container);
+  const palette = getAccentPalette(targetId);
+  const layout = computeLayout(labels, width, height);
+  const polygonLine = d3.line().x((point) => point.x).y((point) => point.y).curve(d3.curveLinearClosed);
+  const svg = root
+    .append("svg")
+    .attr("width", width)
+    .attr("height", height)
+    .attr("viewBox", `0 0 ${width} ${height}`)
+    .style("filter", `drop-shadow(0 10px 18px ${palette.glow})`);
+
+  const chartLayer = svg.append("g");
+  const gridPolygons = buildGridPolygons(layout);
+  const dataPolygon = buildDataPolygon(values, layout);
+
+  chartLayer
+    .append("g")
+    .selectAll("path")
+    .data(gridPolygons)
+    .join("path")
+    .attr("d", polygonLine)
+    .attr("fill", "none")
+    .attr("stroke", "#d9e1eb")
+    .attr("stroke-width", 1);
+
+  chartLayer
+    .append("g")
+    .selectAll("line")
+    .data(layout.axisMetadata)
+    .join("line")
+    .attr("x1", layout.centerX)
+    .attr("y1", layout.centerY)
+    .attr("x2", (axis) => toCartesian(layout.centerX, layout.centerY, axis.angle, layout.radius).x)
+    .attr("y2", (axis) => toCartesian(layout.centerX, layout.centerY, axis.angle, layout.radius).y)
+    .attr("stroke", "#ccd6e3")
+    .attr("stroke-width", 1);
+
+  chartLayer
+    .append("path")
+    .datum(dataPolygon)
+    .attr("d", polygonLine)
+    .attr("fill", palette.fill)
+    .attr("stroke", palette.stroke)
+    .attr("stroke-width", 2);
+
+  chartLayer
+    .append("g")
+    .selectAll("circle")
+    .data(dataPolygon)
+    .join("circle")
+    .attr("cx", (point) => point.x)
+    .attr("cy", (point) => point.y)
+    .attr("r", 3.6)
+    .attr("fill", palette.pointFill)
+    .attr("stroke", "#ffffff")
+    .attr("stroke-width", 1.5);
+
+  drawWrappedLabels(chartLayer.append("g"), layout.axisMetadata, layout);
+}
+
+function scheduleResizeRender(targetId) {
+  const pendingFrame = resizeFrameByTarget.get(targetId);
+  if (pendingFrame) {
+    cancelAnimationFrame(pendingFrame);
+  }
+
+  const nextFrame = requestAnimationFrame(() => {
+    resizeFrameByTarget.delete(targetId);
+    const currentState = chartState.get(targetId);
+    if (!currentState) {
+      return;
+    }
+    renderStarGraph(currentState.weights, targetId, currentState.rateo);
+  });
+
+  resizeFrameByTarget.set(targetId, nextFrame);
+}
+
+function bindResizeObserver(targetId, container) {
+  if (resizeObserverByTarget.has(targetId)) {
+    return;
+  }
+
+  const observer = new ResizeObserver(() => {
+    scheduleResizeRender(targetId);
+  });
+
+  observer.observe(container);
+  resizeObserverByTarget.set(targetId, observer);
+}
+
+export function renderStarGraph(weights, targetId, rateo = null) {
   const container = document.getElementById(targetId);
   if (!container) {
     return;
   }
 
+  chartState.set(targetId, { weights, rateo });
+  bindResizeObserver(targetId, container);
+
   container.innerHTML = "";
+  container.dataset.empty = "true";
+  updateRateoBadge(targetId, null);
 
   if (!weights || !Object.keys(weights).length) {
     container.textContent = "No configuration selected.";
     return;
   }
 
-  appendRateoBadge(container, rateo);
-  const embedTarget = createEmbedTarget(container);
-
-  const entries = Object.entries(weights);
-  const labels = entries.map(([key]) => key);
-  const values = entries.map(([, value]) => Number(value));
-  const { width, height } = getDimensions(container);
-  const geometry = getChartGeometry(labels, width, height);
-  const axes = buildAxes(labels, geometry, width, height);
-  const series = buildSeries(labels, values, geometry);
-  const spec = buildStarGraphSpec(width, height, axes, series);
-
-  await embed(embedTarget, spec, { actions: false, renderer: "svg" });
+  updateRateoBadge(targetId, rateo);
+  renderRadarChart(container, targetId, weights);
+  container.dataset.empty = "false";
 }

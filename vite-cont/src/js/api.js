@@ -17,8 +17,8 @@ export function requestDatasets() {
   return fetch("/api/dataset");
 }
 
-export function requestAllAttributes(dataset) {
-  return postJson("/api/all_attributes", { dataset });
+export function requestAllAttributes(dataset, clusterAttr) {
+  return postJson("/api/all_attributes", buildDatasetPayload(dataset, clusterAttr));
 }
 
 export function requestNumericAttributes(dataset, clusterAttr) {

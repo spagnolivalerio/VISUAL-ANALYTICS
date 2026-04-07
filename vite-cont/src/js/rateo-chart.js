@@ -238,17 +238,20 @@ function bindResizeObserver(container) {
     return;
   }
 
+  const resizeTarget = container.parentElement || container;
   const observer = new ResizeObserver(() => {
     renderRateoChart();
   });
 
-  observer.observe(container);
+  observer.observe(resizeTarget);
   container._rateoResizeObserver = observer;
 }
 
 function renderRateoSvg(container, points) {
-  const width = container.clientWidth || 900;
+  const parentWidth = container.parentElement?.clientWidth || container.clientWidth || 900;
+  const width = Math.max(parentWidth - 20, points.length * 54 + MARGIN.left + MARGIN.right);
   const height = container.clientHeight || HEIGHT;
+  container.style.width = `${width}px`;
   const { timesteps, xScale, yScale } = buildScales(points, width, height);
   const svg = createSvg(container, width, height);
 
@@ -271,6 +274,7 @@ export async function renderRateoChart() {
     syncSelectionState(points, context);
 
     if (!points.length) {
+      container.style.width = "100%";
       container.textContent = "No configurations saved yet.";
       refreshStarGraphs();
       return;
@@ -281,6 +285,7 @@ export async function renderRateoChart() {
     bindDeleteButton();
     bindResizeObserver(container);
   } catch (error) {
+    container.style.width = "100%";
     container.textContent = `Unable to load configurations: ${error.message}`;
   }
 }

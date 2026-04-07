@@ -1,15 +1,15 @@
 import * as d3 from "d3";
 
-const MARGIN = { top: 20, right: 20, bottom: 40, left: 46 };
-const DEFAULT_POINT_OPACITY = 0.85;
+const MARGIN = { top: 14, right: 14, bottom: 34, left: 38 };
+const DEFAULT_POINT_OPACITY = 0.82;
 const DIMMED_POINT_OPACITY = 0.12;
 const ACTIVE_POINT_OPACITY = 0.9;
-const DEFAULT_CENTROID_OPACITY = 0.95;
+const DEFAULT_CENTROID_OPACITY = 0.92;
 const DIMMED_CENTROID_OPACITY = 0.25;
 const ACTIVE_CENTROID_OPACITY = 1;
-const POINT_RADIUS = 3.5;
-const ACTIVE_POINT_RADIUS = 4.6;
-const CENTROID_RADIUS = 7;
+const POINT_RADIUS = 3;
+const ACTIVE_POINT_RADIUS = 4.2;
+const CENTROID_RADIUS = 6;
 
 function getContainerSize(container) {
   const rect = container.getBoundingClientRect();
@@ -20,6 +20,7 @@ function getContainerSize(container) {
 }
 
 function buildChart(container, clearContainer) {
+  container.classList.remove("plot-placeholder");
   clearContainer(container);
   const { width, height } = getContainerSize(container);
   const svg = d3
@@ -52,17 +53,17 @@ function renderAxes(g, x, y, innerWidth, innerHeight) {
 
   g.append("text")
     .attr("x", innerWidth / 2)
-    .attr("y", innerHeight + 34)
+    .attr("y", innerHeight + 28)
     .attr("text-anchor", "middle")
-    .style("font-size", "12px")
+    .style("font-size", "11px")
     .text("MDS X");
 
   g.append("text")
     .attr("transform", "rotate(-90)")
     .attr("x", -innerHeight / 2)
-    .attr("y", -34)
+    .attr("y", -28)
     .attr("text-anchor", "middle")
-    .style("font-size", "12px")
+    .style("font-size", "11px")
     .text("MDS Y");
 }
 

@@ -48,15 +48,35 @@
             </span>
             <span>Menu</span>
           </button>
+          <div class="top-bar-heading">
+            <p class="top-bar-eyebrow">Visual Analytics Workspace</p>
+            <h1>MDS Control Room</h1>
+          </div>
         </div>
-        <div class="top-bar-content" aria-hidden="true"></div>
+        <div class="top-bar-content">
+          <div class="top-bar-status" id="topbar-status" aria-live="polite">
+            Dashboard synchronized with the current dataset context.
+          </div>
+          <div class="top-bar-meta">
+            <span class="top-bar-badge-label">Dataset</span>
+            <span class="top-bar-badge" id="topbar-dataset">No dataset</span>
+            <span class="top-bar-badge-label">Attribute</span>
+            <span class="top-bar-badge" id="topbar-attribute">No attribute</span>
+          </div>
+          <div class="top-bar-actions">
+            <button id="refresh-dashboard-btn" class="top-bar-btn" type="button">Refresh View</button>
+          </div>
+        </div>
       </div>
 
       <div class="page-content">
         <section class="top-row" aria-label="MDS plots and weights">
           <article class="panel-card plot-card">
             <div class="panel-header plot-title-row">
-              <h2>Classical MDS</h2>
+              <div>
+                <h2>Classical MDS</h2>
+                <p class="panel-subtitle">Baseline projection for the current context.</p>
+              </div>
               <div class="plot-controls">
                 <button
                   id="toggle-legend-classic"
@@ -91,10 +111,13 @@
 
           <article class="panel-card plot-card">
             <div class="panel-header plot-title-row">
-              <h2>
-                Non-Proportional MDS
-                <span id="nonprop-timestep" class="plot-timestep"></span>
-              </h2>
+              <div>
+                <h2>
+                  Non-Proportional MDS
+                  <span id="nonprop-timestep" class="plot-timestep"></span>
+                </h2>
+                <p class="panel-subtitle">Weighted distance view driven by the sliders.</p>
+              </div>
               <div class="plot-controls">
                 <button
                   id="toggle-legend-nonprop"
@@ -129,7 +152,10 @@
 
           <article class="panel-card weights-card">
             <div class="panel-header">
-              <h2 class="weights-header">Weights Control Panel</h2>
+              <div>
+                <h2 class="weights-header">Weights Control Panel</h2>
+                <p class="panel-subtitle">Tune the contribution of each numeric attribute.</p>
+              </div>
             </div>
 
             <aside id="weights-panel" class="weights-panel">
@@ -172,29 +198,51 @@
 
           <div class="star-block">
             <div class="star-card star-card-left">
-              <button
-                class="sync-btn"
-                type="button"
-                data-target="star-graph-1"
-                aria-label="Sync MDS from this configuration"
-              >
-                Sync
-              </button>
-              <div id="star-graph-1" class="star-canvas" aria-live="polite"></div>
+              <div class="star-card-toolbar">
+                <div class="star-card-copy">
+                  <p class="star-card-label">Star Graph A</p>
+                  <p class="star-card-caption">Pinned configuration for side-by-side comparison.</p>
+                </div>
+                <div class="star-card-actions">
+                  <span id="star-rateo-1" class="star-rateo" hidden></span>
+                  <button
+                    class="sync-btn"
+                    type="button"
+                    data-target="star-graph-1"
+                    aria-label="Sync MDS from this configuration"
+                  >
+                    Sync
+                  </button>
+                </div>
+              </div>
+              <div class="star-card-body">
+                <div id="star-graph-1" class="star-canvas" aria-live="polite"></div>
+              </div>
             </div>
           </div>
 
           <div class="star-block">
             <div class="star-card star-card-right">
-              <button
-                class="sync-btn"
-                type="button"
-                data-target="star-graph-2"
-                aria-label="Sync MDS from this configuration"
-              >
-                Sync
-              </button>
-              <div id="star-graph-2" class="star-canvas" aria-live="polite"></div>
+              <div class="star-card-toolbar">
+                <div class="star-card-copy">
+                  <p class="star-card-label">Star Graph B</p>
+                  <p class="star-card-caption">Second comparison slot for saved configurations.</p>
+                </div>
+                <div class="star-card-actions">
+                  <span id="star-rateo-2" class="star-rateo" hidden></span>
+                  <button
+                    class="sync-btn"
+                    type="button"
+                    data-target="star-graph-2"
+                    aria-label="Sync MDS from this configuration"
+                  >
+                    Sync
+                  </button>
+                </div>
+              </div>
+              <div class="star-card-body">
+                <div id="star-graph-2" class="star-canvas" aria-live="polite"></div>
+              </div>
             </div>
           </div>
         </section>
@@ -202,6 +250,5 @@
     </main>
 
     <script type="module" src="./js/main.js"></script>
-    <script type="module" src="./js/sidebar.js"></script>
   </body>
 </html>

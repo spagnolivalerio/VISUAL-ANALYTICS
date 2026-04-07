@@ -3,15 +3,14 @@
   top: 0;
   left: 0;
   z-index: 50;
-  width: 300px;
+  width: 312px;
   height: 100vh;
-  padding: 20px 18px;
+  padding: 18px 16px;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  border-right: 1px solid #d6dde6;
-  box-shadow: 16px 0 40px rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, #ffffff 0%, #f5f9ff 100%);
+  border-right: 1px solid #d4deea;
+  box-shadow: 18px 0 42px rgba(15, 23, 42, 0.12);
   transform: translateX(-100%);
   transition: transform 0.22s ease;
 }
@@ -24,9 +23,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #e6edf5;
+  border-bottom: 1px solid #e7eef7;
 }
 
 .sidebar-header-copy {
@@ -53,15 +52,17 @@
 .sidebar-section {
   padding: 14px;
   border: 1px solid #e3eaf3;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .sidebar-section h3 {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
-  color: #425466;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5b6e84;
 }
 
 #datasets-list,
@@ -71,38 +72,49 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
 }
 
-#datasets-list li,
-#attributes-list li {
-  padding: 8px 10px;
-  font-size: 13px;
+.sidebar-list-button {
+  width: 100%;
+  padding: 10px 11px;
   border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  border-radius: 12px;
   background: #f8fafc;
   color: #243244;
-  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
-#datasets-list li:hover,
-#attributes-list li:hover {
+.sidebar-list-button:hover:not(:disabled) {
   background: #eef5ff;
   border-color: #c8d8ee;
   transform: translateY(-1px);
 }
 
-#datasets-list li[data-selected="true"] {
+.sidebar-list-button[data-selected="true"] {
   background: #e8f1ff;
   border-color: #bfd4f3;
   color: #124a9c;
   box-shadow: inset 0 0 0 1px rgba(31, 111, 235, 0.12);
 }
 
+.sidebar-list-button:disabled {
+  color: #7a8798;
+  cursor: default;
+  background: #f7f9fc;
+}
+
 .sidebar-toggle,
 .sidebar-close {
   border: 1px solid #d6dde6;
-  border-radius: 10px;
+  border-radius: 12px;
   background: #ffffff;
   cursor: pointer;
   transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
@@ -115,7 +127,8 @@
 }
 
 .sidebar-toggle:focus-visible,
-.sidebar-close:focus-visible {
+.sidebar-close:focus-visible,
+.sidebar-list-button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.14);
 }
@@ -124,9 +137,10 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  font-weight: 600;
+  padding: 9px 12px;
+  font-weight: 700;
   color: #152033;
+  flex-shrink: 0;
 }
 
 .sidebar-close {
@@ -160,7 +174,7 @@
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(15, 23, 42, 0.22);
+  background: rgba(15, 23, 42, 0.24);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;

@@ -1,5 +1,5 @@
 import { requestAllAttributes, requestDatasets } from "./api";
-import { getCurrentDataset, setCurrentClusterAttr, setCurrentDataset } from "./app-context";
+import { getCurrentContext, setCurrentContext } from "./app-context";
 
 const sidebar = document.getElementById("app-sidebar");
 const toggle = document.querySelector(".sidebar-toggle");
@@ -8,23 +8,44 @@ const backdrop = document.querySelector(".sidebar-backdrop");
 const datasetsList = document.getElementById("datasets-list");
 const attributesList = document.getElementById("attributes-list");
 
-const ATTRIBUTES_LOADING_LABEL = "Loading...";
-const ATTRIBUTES_ERROR_LABEL = "Error loading attributes";
+const ATTRIBUTES_LOADING_LABEL = "Loading attributes...";
+const ATTRIBUTES_ERROR_LABEL = "Unable to load attributes";
 const NO_ATTRIBUTES_LABEL = "No attributes";
+const DATASETS_LOADING_LABEL = "Loading datasets...";
 const NO_DATASETS_LABEL = "No datasets";
-const DATASETS_ERROR_LABEL = "Error loading datasets";
+const DATASETS_ERROR_LABEL = "Unable to load datasets";
 
-function createListItem(label, onClick = null, isSelected = false) {
-  const li = document.createElement("li");
-  li.textContent = label;
-  li.dataset.selected = isSelected ? "true" : "false";
+let availableDatasets = [];
+let availableAttributes = [];
+let onContextChangeHandler = null;
 
-  // making the li clickable
-  if (onClick) {
-    li.style.cursor = "pointer";
-    li.addEventListener("click", onClick);
+async function parseJsonResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const body = await response.text();
+    throw new Error(body.slice(0, 120) || "Invalid server response");
   }
 
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || `HTTP ${response.status}`);
+  }
+
+  return payload;
+}
+
+function createListItem({ label, onClick = null, isSelected = false, disabled = false }) {
+  const li = document.createElement("li");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "sidebar-list-button";
+  button.textContent = label;
+  button.dataset.selected = isSelected ? "true" : "false";
+  button.disabled = disabled || !onClick;
+  if (onClick && !disabled) {
+    button.addEventListener("click", onClick);
+  }
+  li.appendChild(button);
   return li;
 }
 
@@ -35,75 +56,105 @@ function renderList(listElement, items, emptyLabel, getItemConfig) {
 
   listElement.innerHTML = "";
   if (!items.length) {
-    listElement.appendChild(createListItem(emptyLabel));
+    listElement.appendChild(createListItem({ label: emptyLabel, disabled: true }));
     return;
   }
 
   items.forEach((item) => {
-    const [label, onClick, isSelected] = getItemConfig(item);
-    listElement.appendChild(createListItem(label, onClick, isSelected));
+    listElement.appendChild(createListItem(getItemConfig(item)));
   });
 }
 
-function renderAttributes(items) {
-  renderList(attributesList, items, NO_ATTRIBUTES_LABEL, (name) => [
-    name,
-    [ATTRIBUTES_LOADING_LABEL, ATTRIBUTES_ERROR_LABEL, NO_ATTRIBUTES_LABEL].includes(name)
-      ? null
-      : () => handleAttributeSelection(name),
-    false,
-  ]);
+function renderDatasets(items, selectedDataset = getCurrentContext().dataset, disabled = false) {
+  renderList(datasetsList, items, NO_DATASETS_LABEL, (name) => ({
+    label: name,
+    onClick: () => handleDatasetSelection(name),
+    isSelected: name === selectedDataset,
+    disabled,
+  }));
 }
 
-function renderDatasets(items) {
-  const currentDataset = getCurrentDataset();
-  renderList(datasetsList, items, NO_DATASETS_LABEL, (name) => [
-    name,
-    () => handleDatasetSelection(name),
-    name === currentDataset,
-  ]);
+function renderAttributes(items, selectedClusterAttr = getCurrentContext().clusterAttr, disabled = false) {
+  renderList(attributesList, items, NO_ATTRIBUTES_LABEL, (name) => ({
+    label: name,
+    onClick: () => handleAttributeSelection(name),
+    isSelected: name === selectedClusterAttr,
+    disabled,
+  }));
 }
 
-function handleAttributeSelection(name) {
-  setCurrentClusterAttr(name);
-  location.reload();
+async function fetchDatasets() {
+  const payload = await parseJsonResponse(await requestDatasets());
+  return Array.isArray(payload.datasets) ? payload.datasets : [];
 }
 
-async function loadAttributes(datasetName) {
-  try {
-    const response = await requestAllAttributes(datasetName);
-    const payload = await response.json();
-    const attributes = Array.isArray(payload.attributes) ? payload.attributes : [];
-    renderAttributes(attributes);
-  } catch (error) {
-    renderAttributes([ATTRIBUTES_ERROR_LABEL]);
+async function fetchAttributes(datasetName) {
+  const payload = await parseJsonResponse(await requestAllAttributes(datasetName));
+  return {
+    attributes: Array.isArray(payload.attributes) ? payload.attributes : [],
+    clusterAttr: payload.cluster_attr || null,
+  };
+}
+
+function getResolvedDataset(datasets, currentDataset) {
+  if (currentDataset && datasets.includes(currentDataset)) {
+    return currentDataset;
+  }
+  return datasets[0] || null;
+}
+
+function getResolvedClusterAttr(attributes, suggestedClusterAttr, currentClusterAttr) {
+  if (currentClusterAttr && attributes.includes(currentClusterAttr)) {
+    return currentClusterAttr;
+  }
+  if (suggestedClusterAttr && attributes.includes(suggestedClusterAttr)) {
+    return suggestedClusterAttr;
+  }
+  return attributes[0] || null;
+}
+
+async function notifyContextChange() {
+  if (typeof onContextChangeHandler === "function") {
+    await onContextChangeHandler();
   }
 }
 
-function handleDatasetSelection(name) {
-  setCurrentDataset(name);
-  setCurrentClusterAttr(null);
-  renderDatasets(
-    Array.from(datasetsList?.querySelectorAll("li") || [], (item) => item.textContent).filter(Boolean)
-  );
-  renderAttributes([ATTRIBUTES_LOADING_LABEL]);
-  loadAttributes(name);
-}
-
-async function initDatasetsList() {
-  if (!datasetsList) {
+async function handleAttributeSelection(name) {
+  const { dataset } = getCurrentContext();
+  if (!dataset) {
     return;
   }
 
-  datasetsList.innerHTML = "<li>Loading...</li>";
+  setCurrentContext({ dataset, clusterAttr: name });
+  renderAttributes(availableAttributes, name);
+  closeSidebar();
+  await notifyContextChange();
+}
+
+async function handleDatasetSelection(name) {
+  const previousContext = getCurrentContext();
+  const previousAttributes = [...availableAttributes];
+  setCurrentContext({ dataset: name, clusterAttr: null });
+  renderDatasets(availableDatasets, name);
+  renderAttributes([ATTRIBUTES_LOADING_LABEL], null, true);
 
   try {
-    const response = await requestDatasets();
-    const payload = await response.json();
-    const datasets = Array.isArray(payload.datasets) ? payload.datasets : [];
-    renderDatasets(datasets);
+    const { attributes, clusterAttr } = await fetchAttributes(name);
+    availableAttributes = attributes;
+    const resolvedClusterAttr = getResolvedClusterAttr(attributes, clusterAttr, null);
+    setCurrentContext({ dataset: name, clusterAttr: resolvedClusterAttr });
+    renderAttributes(attributes, resolvedClusterAttr);
+    closeSidebar();
+    await notifyContextChange();
   } catch (error) {
-    datasetsList.innerHTML = `<li>${DATASETS_ERROR_LABEL}</li>`;
+    availableAttributes = previousAttributes;
+    setCurrentContext(previousContext);
+    renderDatasets(availableDatasets, previousContext.dataset);
+    if (previousAttributes.length) {
+      renderAttributes(previousAttributes, previousContext.clusterAttr);
+    } else {
+      renderAttributes([`${ATTRIBUTES_ERROR_LABEL}: ${error.message}`], null, true);
+    }
   }
 }
 
@@ -116,7 +167,6 @@ function openSidebar() {
   backdrop.classList.add("is-visible");
   toggle.setAttribute("aria-expanded", "true");
   sidebar.setAttribute("aria-hidden", "false");
-  toggle.style.display = "none";
 }
 
 function closeSidebar() {
@@ -128,13 +178,15 @@ function closeSidebar() {
   backdrop.classList.remove("is-visible");
   toggle.setAttribute("aria-expanded", "false");
   sidebar.setAttribute("aria-hidden", "true");
-  toggle.style.display = "";
 }
 
 function toggleSidebar(event) {
   event.stopPropagation();
-  if (sidebar?.classList.contains("is-open")) closeSidebar();
-  else openSidebar();
+  if (sidebar?.classList.contains("is-open")) {
+    closeSidebar();
+    return;
+  }
+  openSidebar();
 }
 
 function initSidebarToggle() {
@@ -142,10 +194,55 @@ function initSidebarToggle() {
     return;
   }
 
+  if (toggle.dataset.bound === "true") {
+    return;
+  }
+
   toggle.addEventListener("click", toggleSidebar);
   closeBtn.addEventListener("click", closeSidebar);
   backdrop.addEventListener("click", closeSidebar);
+  toggle.dataset.bound = "true";
 }
 
-initDatasetsList();
-initSidebarToggle();
+export async function initSidebar({ onContextChange } = {}) {
+  onContextChangeHandler = onContextChange || null;
+  initSidebarToggle();
+
+  if (!datasetsList || !attributesList) {
+    return getCurrentContext();
+  }
+
+  datasetsList.innerHTML = "";
+  datasetsList.appendChild(createListItem({ label: DATASETS_LOADING_LABEL, disabled: true }));
+  attributesList.innerHTML = "";
+  attributesList.appendChild(createListItem({ label: ATTRIBUTES_LOADING_LABEL, disabled: true }));
+
+  try {
+    availableDatasets = await fetchDatasets();
+    renderDatasets(availableDatasets);
+
+    const currentContext = getCurrentContext();
+    const dataset = getResolvedDataset(availableDatasets, currentContext.dataset);
+    if (!dataset) {
+      setCurrentContext({ dataset: null, clusterAttr: null });
+      renderAttributes([], null, true);
+      return getCurrentContext();
+    }
+
+    const { attributes, clusterAttr } = await fetchAttributes(dataset);
+    availableAttributes = attributes;
+
+    const resolvedClusterAttr = getResolvedClusterAttr(attributes, clusterAttr, currentContext.clusterAttr);
+    setCurrentContext({ dataset, clusterAttr: resolvedClusterAttr });
+    renderDatasets(availableDatasets, dataset);
+    renderAttributes(attributes, resolvedClusterAttr);
+    return getCurrentContext();
+  } catch (error) {
+    availableDatasets = [];
+    availableAttributes = [];
+    setCurrentContext({ dataset: null, clusterAttr: null });
+    renderDatasets([`${DATASETS_ERROR_LABEL}: ${error.message}`], null, true);
+    renderAttributes([], null, true);
+    return getCurrentContext();
+  }
+}

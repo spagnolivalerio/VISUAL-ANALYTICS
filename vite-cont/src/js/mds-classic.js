@@ -14,7 +14,14 @@ export async function renderClassicMds(dataset, cluster_attr) {
   configureCentroidToggle(container, toggleButton);
   configureLegendToggle(container, legendButton);
 
+  if (!dataset) {
+    container.textContent = "Select a dataset to render Classical MDS.";
+    container.classList.add("plot-placeholder");
+    return;
+  }
+
   container.textContent = "Loading MDS classic points...";
+  container.classList.add("plot-placeholder");
 
   try {
     const response = await requestClassicMds(dataset, cluster_attr);

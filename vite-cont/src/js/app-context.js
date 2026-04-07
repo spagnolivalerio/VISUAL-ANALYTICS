@@ -28,3 +28,8 @@ export function setCurrentClusterAttr(clusterAttr) {
   }
   localStorage.removeItem("cluster_attr");
 }
+
+export function setCurrentContext({ dataset, clusterAttr }) {
+  setCurrentDataset(dataset);
+  setCurrentClusterAttr(clusterAttr);
+}
