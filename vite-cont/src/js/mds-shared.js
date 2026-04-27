@@ -11,6 +11,27 @@ const POINT_RADIUS = 3;
 const ACTIVE_POINT_RADIUS = 4.2;
 const CENTROID_RADIUS = 6;
 
+export function createSelectionState() {
+  let selection = null;
+  return {
+    get: () => selection,
+    set: (nextSelection) => (selection = nextSelection),
+    clear: () => (selection = null),
+  };
+}
+
+function getSharedPointSelection() {
+  return Number.isInteger(window.__mdsSharedPointSelection) ? window.__mdsSharedPointSelection : null;
+}
+
+function setSharedPointSelection(pointId) {
+  window.__mdsSharedPointSelection = Number.isInteger(pointId) ? pointId : null;
+}
+
+function clearSharedPointSelection() {
+  window.__mdsSharedPointSelection = null;
+}
+
 function getContainerSize(container) {
   const rect = container.getBoundingClientRect();
   return {
@@ -43,8 +64,21 @@ function buildScales(points, innerWidth, innerHeight) {
   };
 }
 
-function buildColorScale(points) {
-  return d3.scaleOrdinal(d3.schemeTableau10).domain([...new Set(points.map((d) => d.class_label))]);
+function buildPalette(size) {
+  if (size <= d3.schemeTableau10.length) {
+    return d3.schemeTableau10.slice(0, size);
+  }
+
+  return d3.quantize((t) => d3.interpolateSinebow(t * 0.92), size);
+}
+
+function buildColorScale(points, legendLabels = null) {
+  const labels =
+    Array.isArray(legendLabels) && legendLabels.length
+      ? [...legendLabels]
+      : [...new Set(points.map((d) => d.class_label))];
+
+  return d3.scaleOrdinal().domain(labels).range(buildPalette(labels.length));
 }
 
 function renderAxes(g, x, y, innerWidth, innerHeight) {
@@ -98,7 +132,7 @@ function renderPoints(pointsLayer, points, x, y, color) {
     .attr("fill", (d) => color(d.class_label))
     .attr("opacity", DEFAULT_POINT_OPACITY);
 
-  circles.append("title").text((d) => `id: ${d.id}, class: ${d.class_label}`);
+  circles.append("title").text((d) => `id: ${d.id}, cluster: ${d.class_label}`);
   return circles;
 }
 
@@ -248,6 +282,7 @@ function bindSelectionEvents(svg, circles, centroidCircles, selectionController,
   const resetSelection = () => {
     selectionController.resetHighlight();
     selectionState?.clear?.();
+    clearSharedPointSelection();
     window.dispatchEvent(new CustomEvent("mds:reset"));
   };
 
@@ -258,12 +293,13 @@ function bindSelectionEvents(svg, circles, centroidCircles, selectionController,
       resetSelection();
       return;
     }
+    clearSharedPointSelection();
+    window.dispatchEvent(new CustomEvent("mds:reset"));
     if (currentSelection?.type === "point") {
       selectionController.resetHighlight();
     }
     selectionController.highlightCluster(d.label);
     selectionState?.set?.({ type: "centroid", key: d.label });
-    window.dispatchEvent(new CustomEvent("mds:centroid", { detail: { label: d.label } }));
   });
 
   svg.on("click", resetSelection);
@@ -280,31 +316,30 @@ function bindSelectionEvents(svg, circles, centroidCircles, selectionController,
     }
     selectionController.highlightPoint(d.id);
     selectionState?.set?.({ type: "point", key: d.id });
+    setSharedPointSelection(d.id);
     window.dispatchEvent(new CustomEvent("mds:point", { detail: { id: d.id } }));
   });
 }
 
-function bindGlobalSelectionSync(container, selectionController) {
+function bindGlobalSelectionSync(container, selectionController, selectionState) {
   const handlers = {
-    centroid: (event) => {
-      const currentSelection = selectionController.getCurrentSelection();
-      if (currentSelection?.type === "point") selectionController.resetHighlight();
-      if (currentSelection?.type !== "centroid" || currentSelection.key !== event.detail.label) {
-        selectionController.highlightCluster(event.detail.label);
-      }
-    },
     point: (event) => {
       const currentSelection = selectionController.getCurrentSelection();
       if (currentSelection?.type === "centroid") selectionController.resetHighlight();
       if (currentSelection?.type !== "point" || currentSelection.key !== event.detail.id) {
         selectionController.highlightPoint(event.detail.id);
       }
+      setSharedPointSelection(event.detail.id);
+      selectionState?.set?.({ type: "point", key: event.detail.id });
     },
-    reset: () => selectionController.resetHighlight(),
+    reset: () => {
+      clearSharedPointSelection();
+      selectionController.resetHighlight();
+      selectionState?.clear?.();
+    },
   };
 
   [
-    ["mds:centroid", "_mdsCentroidHandler", handlers.centroid],
     ["mds:reset", "_mdsResetHandler", handlers.reset],
     ["mds:point", "_mdsPointHandler", handlers.point],
   ].forEach(([eventName, key, handler]) => {
@@ -316,8 +351,9 @@ function bindGlobalSelectionSync(container, selectionController) {
   });
 }
 
-function restoreSelection(points, clusters, selectionState) {
+function restoreSelection(points, clusters, selectionState, selectionController) {
   const savedSelection = selectionState?.get?.();
+  const sharedPointSelection = getSharedPointSelection();
   const valid =
     savedSelection?.type === "centroid"
       ? clusters.has(savedSelection.key)
@@ -326,19 +362,28 @@ function restoreSelection(points, clusters, selectionState) {
         : false;
 
   if (!savedSelection) {
+    if (sharedPointSelection !== null && points.some((point) => point.id === sharedPointSelection)) {
+      selectionState?.set?.({ type: "point", key: sharedPointSelection });
+      selectionController.highlightPoint(sharedPointSelection);
+    }
     return;
   }
 
   if (!valid) {
     selectionState?.clear?.();
+    if (sharedPointSelection !== null && points.some((point) => point.id === sharedPointSelection)) {
+      selectionState?.set?.({ type: "point", key: sharedPointSelection });
+      selectionController.highlightPoint(sharedPointSelection);
+    }
     return;
   }
 
-  window.dispatchEvent(
-    new CustomEvent(savedSelection.type === "centroid" ? "mds:centroid" : "mds:point", {
-      detail: savedSelection.type === "centroid" ? { label: savedSelection.key } : { id: savedSelection.key },
-    })
-  );
+  if (savedSelection.type === "centroid") {
+    selectionController.highlightCluster(savedSelection.key);
+    return;
+  }
+
+  selectionController.highlightPoint(savedSelection.key);
 }
 
 export function configureCentroidToggle(container, toggleButton) {
@@ -378,40 +423,28 @@ export function configureLegendToggle(container, toggleButton) {
   toggleButton._legendToggleBound = true;
 }
 
-export async function parseMdsJsonResponse(response) {
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    const body = await response.text();
-    throw new Error(`Expected JSON, got: ${body.slice(0, 120)}`);
-  }
-
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload.error || `HTTP ${response.status}`);
-  }
-
-  return payload;
-}
-
 export function renderMdsPlot({
   container,
   points,
   showCentroids,
   clearContainer = (node) => (node.innerHTML = ""),
+  legendLabels = null,
   selectionState = null,
 }) {
   const { svg, g, innerWidth, innerHeight } = buildChart(container, clearContainer);
   const { x, y } = buildScales(points, innerWidth, innerHeight);
-  const color = buildColorScale(points);
+  const color = buildColorScale(points, legendLabels);
   const { pointsLayer, centroidLayer, linksLayer } = createLayers(g);
   const { clusters, centroids } = buildClusterData(points);
+  const resolvedLegendLabels =
+    Array.isArray(legendLabels) && legendLabels.length ? legendLabels : color.domain();
 
   renderAxes(g, x, y, innerWidth, innerHeight);
 
   const circles = renderPoints(pointsLayer, points, x, y, color);
   const centroidCircles = renderCentroids(centroidLayer, centroids, x, y, color);
   applyCentroidVisibility(centroidLayer, showCentroids);
-  renderLegend(container, color.domain(), color, container.dataset.showLegend === "true");
+  renderLegend(container, resolvedLegendLabels, color, container.dataset.showLegend === "true");
 
   const selectionController = createSelectionController(
     points,
@@ -425,6 +458,6 @@ export function renderMdsPlot({
   );
 
   bindSelectionEvents(svg, circles, centroidCircles, selectionController, selectionState);
-  bindGlobalSelectionSync(container, selectionController);
-  restoreSelection(points, clusters, selectionState);
+  bindGlobalSelectionSync(container, selectionController, selectionState);
+  restoreSelection(points, clusters, selectionState, selectionController);
 }

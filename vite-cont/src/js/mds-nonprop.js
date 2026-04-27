@@ -1,23 +1,18 @@
-import { requestNonPropMds } from "./api";
+import { parseJsonResponse, requestNonPropMds } from "./api";
 import { getCurrentContext } from "./app-context";
 import { assignConfigurationToStar, getStarTarget } from "./config-selection";
 import { getNextTimestep, saveConfiguration } from "./config-store";
-import { configureCentroidToggle, configureLegendToggle, parseMdsJsonResponse, renderMdsPlot } from "./mds-shared";
+import { configureCentroidToggle, configureLegendToggle, createSelectionState, renderMdsPlot } from "./mds-shared";
 import { renderRateoChart } from "./rateo-chart";
 import { renderStarGraph } from "./star-graph";
 import { getWeightsFromPanel } from "./weights-panel";
 
 let resizeObserver;
 let lastPoints = [];
-const nonPropSelectionState = {
-  get: () => window.__mdsSelection || null,
-  set: (selection) => (window.__mdsSelection = selection),
-  clear: () => (window.__mdsSelection = null),
-};
+const nonPropSelectionState = createSelectionState();
 
 async function loadNonPropPoints(weights, dataset, clusterAttr) {
-  const response = await requestNonPropMds(weights, dataset, clusterAttr);
-  const payload = await parseMdsJsonResponse(response);
+  const payload = await parseJsonResponse(await requestNonPropMds(weights, dataset, clusterAttr));
 
   return {
     points: payload.points || [],

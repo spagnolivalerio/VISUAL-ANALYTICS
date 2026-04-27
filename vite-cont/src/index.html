@@ -70,20 +70,34 @@
       </div>
 
       <div class="page-content">
-        <section class="top-row" aria-label="MDS plots and weights">
+        <section class="top-row" aria-label="Clustering, MDS plots and weights">
           <article class="panel-card plot-card">
             <div class="panel-header plot-title-row">
               <div>
-                <h2>Classical MDS</h2>
-                <p class="panel-subtitle">Baseline projection for the current context.</p>
+                <h2>KMeans Clustering</h2>
+                <p class="panel-subtitle">Clusters computed in feature space, points projected with classical MDS.</p>
               </div>
-              <div class="plot-controls">
+              <div class="plot-controls kmeans-controls">
+                <label class="kmeans-inline-control" for="kmeans-k-input">
+                  <span>k</span>
+                  <input
+                    id="kmeans-k-input"
+                    class="kmeans-k-input"
+                    type="number"
+                    inputmode="numeric"
+                    min="2"
+                    step="1"
+                    value="3"
+                    aria-label="Number of clusters"
+                  />
+                </label>
+                <button id="run-kmeans-btn" type="button" class="plot-run-btn">Run</button>
                 <button
-                  id="toggle-legend-classic"
+                  id="toggle-legend-kmeans"
                   type="button"
                   class="plot-control-btn"
                   aria-pressed="false"
-                  aria-label="Toggle classes legend"
+                  aria-label="Toggle clusters legend"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path
@@ -92,7 +106,7 @@
                   </svg>
                 </button>
                 <button
-                  id="toggle-centroids-classic"
+                  id="toggle-centroids-kmeans"
                   type="button"
                   class="plot-control-btn centroid-toggle"
                   aria-pressed="true"
@@ -106,7 +120,8 @@
                 </button>
               </div>
             </div>
-            <div id="mds-classic-container" class="plot-container"></div>
+            <p id="kmeans-status" class="plot-status" aria-live="polite"></p>
+            <div id="kmeans-container" class="plot-container"></div>
           </article>
 
           <article class="panel-card plot-card">

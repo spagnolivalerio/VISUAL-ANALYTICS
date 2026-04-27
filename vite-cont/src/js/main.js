@@ -1,6 +1,6 @@
 import { getCurrentContext } from "./app-context";
 import { initConfigurationSync } from "./configuration-sync";
-import { renderClassicMds } from "./mds-classic";
+import { initKMeansView, resetKMeansView } from "./kmeans-view";
 import { initNonPropMds, resetNonPropMds } from "./mds-nonprop";
 import { renderRateoChart } from "./rateo-chart";
 import { initSidebar } from "./sidebar";
@@ -46,7 +46,7 @@ function updateTopBarContext() {
   }
 
   if (!clusterAttr) {
-    setTopBarStatus("Select a cluster attribute to compute MDS.");
+    setTopBarStatus("Select a cluster attribute to enable clustering views.");
     return;
   }
 
@@ -77,6 +77,7 @@ function initializeModules() {
     return;
   }
 
+  initKMeansView();
   initNonPropMds();
   setupStarSelection();
   initConfigurationSync();
@@ -87,6 +88,8 @@ function initializeModules() {
 export async function refreshDashboard() {
   const { dataset, clusterAttr } = getCurrentContext();
   updateTopBarContext();
+  window.dispatchEvent(new CustomEvent("mds:reset"));
+  resetKMeansView();
   resetNonPropMds();
 
   if (!dataset) {
@@ -96,11 +99,7 @@ export async function refreshDashboard() {
     return;
   }
 
-  await Promise.all([
-    renderClassicMds(dataset, clusterAttr),
-    renderWeightsPanel(null, dataset, clusterAttr),
-    renderRateoChart(),
-  ]);
+  await Promise.all([renderWeightsPanel(null, dataset, clusterAttr), renderRateoChart()]);
 
   updateTopBarContext();
 }

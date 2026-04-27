@@ -1,4 +1,4 @@
-import { requestNumericAttributes } from "./api";
+import { parseJsonResponse, requestNumericAttributes } from "./api";
 import { getCurrentContext } from "./app-context";
 
 const DEFAULT_WEIGHT = 1;
@@ -91,19 +91,7 @@ function parsePanelAttributes(rawAttributes) {
 }
 
 async function loadNumericAttributes(dataset, clusterAttr) {
-  const response = await requestNumericAttributes(dataset, clusterAttr);
-  const contentType = response.headers.get("content-type") || "";
-
-  if (!contentType.includes("application/json")) {
-    const body = await response.text();
-    throw new Error(`Expected JSON, got: ${body.slice(0, 120)}`);
-  }
-
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload.error || `HTTP ${response.status}`);
-  }
-
+  const payload = await parseJsonResponse(await requestNumericAttributes(dataset, clusterAttr));
   return Array.isArray(payload.numeric_attributes) ? payload.numeric_attributes : [];
 }
 

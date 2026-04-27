@@ -1,4 +1,4 @@
-import { requestAllAttributes, requestDatasets } from "./api";
+import { parseJsonResponse, requestAllAttributes, requestDatasets } from "./api";
 import { getCurrentContext, setCurrentContext } from "./app-context";
 
 const sidebar = document.getElementById("app-sidebar");
@@ -18,21 +18,6 @@ const DATASETS_ERROR_LABEL = "Unable to load datasets";
 let availableDatasets = [];
 let availableAttributes = [];
 let onContextChangeHandler = null;
-
-async function parseJsonResponse(response) {
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    const body = await response.text();
-    throw new Error(body.slice(0, 120) || "Invalid server response");
-  }
-
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload.error || `HTTP ${response.status}`);
-  }
-
-  return payload;
-}
 
 function createListItem({ label, onClick = null, isSelected = false, disabled = false }) {
   const li = document.createElement("li");

@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, request
+from sklearn.cluster import KMeans
 from sklearn.manifold import MDS
 from sklearn.preprocessing import StandardScaler
 
@@ -16,18 +17,38 @@ WINE_PATH = DATA_PATH / "wine.csv"
 app = Flask(__name__)
 
 
-def build_mds(**kwargs):
+def create_metric_mds():
     try:
-        return MDS(normalized_stress="auto", n_init=4, init="random", **kwargs)
+        return MDS(
+            normalized_stress="auto",
+            n_init=4,
+            init="random",
+            n_components=2,
+            metric=True,
+            random_state=SEED,
+        )
     except TypeError:
-        return MDS(n_init=4, init="random", **kwargs)
+        return MDS(n_init=4, init="random", n_components=2, metric=True, random_state=SEED)
 
 
-def build_precomputed_mds(**kwargs):
+def create_precomputed_mds():
     try:
-        return build_mds(metric="precomputed", **kwargs)
+        return MDS(
+            normalized_stress="auto",
+            n_init=4,
+            init="random",
+            n_components=2,
+            metric="precomputed",
+            random_state=SEED,
+        )
     except (TypeError, ValueError):
-        return build_mds(dissimilarity="precomputed", **kwargs)
+        return MDS(
+            n_init=4,
+            init="random",
+            n_components=2,
+            dissimilarity="precomputed",
+            random_state=SEED,
+        )
 
 
 def resolve_dataset_path(dataset_name):
@@ -49,6 +70,13 @@ def resolve_request_context(payload):
         "requested_cluster_attr": payload.get("cluster_attr"),
         "dataset": resolve_dataset_path(payload.get("dataset")),
     }
+
+
+def bad_request(message, extra_fields=None):
+    payload = {"error": message}
+    if extra_fields:
+        payload.update(extra_fields)
+    return jsonify(payload), 400
 
 
 def load_dataframe(dataset_path):
@@ -94,7 +122,7 @@ def get_numeric_feature_columns(df, cluster_attr):
         if pd.notna(pd.to_numeric(sample_row[column], errors="coerce")):
             numeric_columns.append(column)
     if not numeric_columns:
-        raise ValueError("No numeric attributes available for MDS")
+        raise ValueError("No numeric attributes available")
     return numeric_columns
 
 
@@ -107,6 +135,19 @@ def scale_features(features):
     return StandardScaler().fit_transform(features)
 
 
+def load_dataset_context(payload):
+    context = resolve_request_context(payload)
+    df = load_dataframe(context["dataset"])
+    cluster_attr = resolve_cluster_attr(df, context["requested_cluster_attr"])
+    return df, cluster_attr
+
+
+def load_numeric_dataset_context(payload):
+    df, cluster_attr = load_dataset_context(payload)
+    numeric_features, attributes = get_numeric_features(df, cluster_attr)
+    return df, cluster_attr, numeric_features, attributes
+
+
 def build_points(embedding, label_values):
     return [
         {
@@ -117,6 +158,19 @@ def build_points(embedding, label_values):
         }
         for index in range(len(label_values))
     ]
+
+
+def build_kmeans_legend_labels(k_value):
+    return [f"Cluster {index + 1}" for index in range(k_value)]
+
+
+def validate_k_value(k_value, n_samples):
+    if n_samples < 2:
+        raise ValueError("KMeans requires at least two rows.")
+    if k_value < 2:
+        raise ValueError("'k' must be at least 2")
+    if k_value > n_samples:
+        raise ValueError(f"'k' must be less than or equal to the number of rows ({n_samples})")
 
 
 def avg_pairwise_distance(items_a, items_b=None):
@@ -224,7 +278,18 @@ def compute_weighted_dissimilarities(scaled_features, weights):
     return dissimilarities
 
 
-def build_mds_response(*, mds, cluster_attr, points, cohesion, separation, extra_fields=None):
+def project_metric_mds(scaled_features):
+    mds = create_metric_mds()
+    return mds, mds.fit_transform(scaled_features)
+
+
+def project_weighted_mds(scaled_features, weights):
+    dissimilarities = compute_weighted_dissimilarities(scaled_features, weights)
+    mds = create_precomputed_mds()
+    return mds, mds.fit_transform(dissimilarities)
+
+
+def build_mds_response(mds, cluster_attr, points, cohesion, separation, extra_fields=None):
     payload = {
         "count": len(points),
         "stress": float(mds.stress_),
@@ -237,6 +302,19 @@ def build_mds_response(*, mds, cluster_attr, points, cohesion, separation, extra
     if extra_fields:
         payload.update(extra_fields)
     return payload
+
+
+def build_projection_response(mds, cluster_attr, embedding, label_values, extra_fields=None):
+    points = build_points(embedding, label_values)
+    cohesion, separation = compute_cluster_metrics(points, label_values)
+    return build_mds_response(
+        mds,
+        cluster_attr,
+        points,
+        cohesion,
+        separation,
+        extra_fields,
+    )
 
 
 @app.get("/health")
@@ -253,53 +331,17 @@ def list_datasets():
     return jsonify(datasets=datasets), 200
 
 
-@app.post("/mds-classic")
-def mds_classic():
-    payload = get_request_payload()
-
-    try:
-        context = resolve_request_context(payload)
-        df = load_dataframe(context["dataset"])
-        cluster_attr = resolve_cluster_attr(df, context["requested_cluster_attr"])
-        features, _ = get_numeric_features(df, cluster_attr)
-    except FileNotFoundError as exc:
-        return jsonify(error=str(exc)), 400
-    except ValueError as exc:
-        return jsonify(error=str(exc)), 400
-
-    scaled = scale_features(features)
-
-    mds = build_mds(n_components=2, metric=True, random_state=SEED)
-    embedding = mds.fit_transform(scaled)
-
-    label_values = df[cluster_attr].tolist()
-    points = build_points(embedding, label_values)
-    cohesion, separation = compute_cluster_metrics(points, label_values)
-
-    return jsonify(
-        build_mds_response(
-            mds=mds,
-            cluster_attr=cluster_attr,
-            points=points,
-            cohesion=cohesion,
-            separation=separation,
-        )
-    ), 200
-
-
 @app.post("/numeric-attributes")
 def numeric_attributes():
     payload = get_request_payload()
 
     try:
-        context = resolve_request_context(payload)
-        df = load_dataframe(context["dataset"])
-        cluster_attr = resolve_cluster_attr(df, context["requested_cluster_attr"])
+        df, cluster_attr = load_dataset_context(payload)
         numeric_attributes = get_numeric_feature_columns(df, cluster_attr)
     except FileNotFoundError as exc:
-        return jsonify(error=str(exc)), 400
+        return bad_request(str(exc))
     except ValueError as exc:
-        return jsonify(error=str(exc)), 400
+        return bad_request(str(exc))
 
     return jsonify(numeric_attributes=numeric_attributes, cluster_attr=cluster_attr), 200
 
@@ -309,13 +351,11 @@ def get_attributes():
     payload = get_request_payload()
 
     try:
-        context = resolve_request_context(payload)
-        df = load_dataframe(context["dataset"])
-        cluster_attr = resolve_cluster_attr(df, context["requested_cluster_attr"])
+        df, cluster_attr = load_dataset_context(payload)
     except FileNotFoundError as exc:
-        return jsonify(error=str(exc)), 400
+        return bad_request(str(exc))
     except ValueError as exc:
-        return jsonify(error=str(exc)), 400
+        return bad_request(str(exc))
 
     return jsonify(attributes=df.columns.tolist(), cluster_attr=cluster_attr), 200
 
@@ -324,42 +364,67 @@ def get_attributes():
 def mds_nonprop():
     payload = get_request_payload()
     weights_payload = payload.get("weights")
+    attributes = []
     if weights_payload is None:
-        return jsonify(error="Missing JSON field 'weights'"), 400
+        return bad_request("Missing JSON field 'weights'")
 
     try:
-        context = resolve_request_context(payload)
-        df = load_dataframe(context["dataset"])
-        cluster_attr = resolve_cluster_attr(df, context["requested_cluster_attr"])
-        numeric_features, attributes = get_numeric_features(df, cluster_attr)
+        df, cluster_attr, numeric_features, attributes = load_numeric_dataset_context(payload)
         weights = parse_weights(weights_payload, attributes)
     except FileNotFoundError as exc:
-        return jsonify(error=str(exc)), 400
+        return bad_request(str(exc))
     except ValueError as exc:
         if "weights" in str(exc) or "Missing weight" in str(exc):
-            return jsonify(error=str(exc), expected_attributes=attributes), 400
-        return jsonify(error=str(exc)), 400
+            return bad_request(str(exc), {"expected_attributes": attributes})
+        return bad_request(str(exc))
 
     scaled = scale_features(numeric_features.to_numpy())
-    dissimilarities = compute_weighted_dissimilarities(scaled, weights)
-
-    mds = build_precomputed_mds(n_components=2, random_state=SEED)
-    embedding = mds.fit_transform(dissimilarities)
-
-    label_values = df[cluster_attr].tolist()
-    points = build_points(embedding, label_values)
-    cohesion, separation = compute_cluster_metrics(points, label_values)
+    mds, embedding = project_weighted_mds(scaled, weights)
 
     return jsonify(
-        build_mds_response(
-            mds=mds,
-            cluster_attr=cluster_attr,
-            points=points,
-            cohesion=cohesion,
-            separation=separation,
-            extra_fields={
-                "attributes": attributes,
-                "weights": weights.tolist(),
+        build_projection_response(
+            mds,
+            cluster_attr,
+            embedding,
+            df[cluster_attr].tolist(),
+        )
+    ), 200
+
+
+@app.post("/kmeans")
+def kmeans():
+    payload = get_request_payload()
+
+    try:
+        _, cluster_attr, numeric_features, _ = load_numeric_dataset_context(payload)
+        k_value = int(payload.get("k", 0))
+    except FileNotFoundError as exc:
+        return bad_request(str(exc))
+    except ValueError as exc:
+        return bad_request(str(exc))
+
+    try:
+        validate_k_value(k_value, int(len(numeric_features.index)))
+    except ValueError as exc:
+        return bad_request(str(exc))
+
+    scaled = scale_features(numeric_features.to_numpy())
+    mds, embedding = project_metric_mds(scaled)
+    estimator = KMeans(n_clusters=k_value, random_state=SEED, n_init=10)
+    estimator.fit(scaled)
+
+    legend_labels = build_kmeans_legend_labels(k_value)
+    label_values = [legend_labels[int(label)] for label in estimator.labels_.tolist()]
+
+    return jsonify(
+        build_projection_response(
+            mds,
+            cluster_attr,
+            embedding,
+            label_values,
+            {
+                "k": k_value,
+                "legend_labels": legend_labels,
             },
         )
     ), 200

@@ -3,8 +3,8 @@ import * as d3 from "d3";
 const DEFAULT_SIZE = 220;
 const MIN_LABEL_CHARS = 4;
 const MAX_LABEL_CHARS = 12;
-const LABEL_DISTANCE = 16;
-const LABEL_CLAMP = 10;
+const LABEL_DISTANCE = 12;
+const LABEL_CLAMP = 6;
 const LABEL_CHAR_WIDTH = 6.4;
 const LABEL_LINE_HEIGHT = 12;
 const MIN_RADIUS = 30;
@@ -292,8 +292,8 @@ function drawWrappedLabels(group, axisMetadata, layout) {
 function renderRadarChart(container, targetId, weights) {
   const labels = Object.keys(weights);
   const values = Object.values(weights);
-  const { width, height } = getDimensions(container);
   const root = createChartRoot(container);
+  const { width, height } = getDimensions(root.node());
   const palette = getAccentPalette(targetId);
   const layout = computeLayout(labels, width, height);
   const polygonLine = d3.line().x((point) => point.x).y((point) => point.y).curve(d3.curveLinearClosed);

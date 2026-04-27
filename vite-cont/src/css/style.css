@@ -190,7 +190,8 @@ label {
 .delete-config-btn:hover,
 .sync-btn:hover,
 .reset-weights-btn:hover,
-.run-mds-btn:hover {
+.run-mds-btn:hover,
+.plot-run-btn:hover {
   transform: translateY(-1px);
 }
 
@@ -277,6 +278,11 @@ label {
   flex-shrink: 0;
 }
 
+.kmeans-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .plot-card {
   min-height: 0;
 }
@@ -320,6 +326,13 @@ label {
   font-size: 12px;
 }
 
+.plot-status {
+  min-height: 16px;
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 .plot-control-btn {
   min-width: var(--control-height);
   padding: 0;
@@ -340,6 +353,41 @@ label {
 .plot-control-btn svg {
   width: 15px;
   height: 15px;
+}
+
+.kmeans-inline-control {
+  height: var(--control-height);
+  padding: 0 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+}
+
+.kmeans-inline-control span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.kmeans-k-input {
+  width: 52px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.kmeans-k-input::-webkit-outer-spin-button,
+.kmeans-k-input::-webkit-inner-spin-button {
+  margin: 0;
 }
 
 .plot-legend {
@@ -411,7 +459,8 @@ label {
   border: 0;
 }
 
-.run-mds-btn {
+.run-mds-btn,
+.plot-run-btn {
   width: 100%;
   height: var(--control-height);
   padding: 0 12px;
@@ -426,7 +475,19 @@ label {
   box-shadow: 0 8px 18px rgba(31, 111, 235, 0.2);
 }
 
+.plot-run-btn {
+  width: auto;
+  flex: 0 0 auto;
+}
+
 .weights-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+
+.plot-run-btn:disabled {
   opacity: 0.6;
   cursor: default;
   transform: none;
@@ -621,7 +682,7 @@ label {
 .star-card-body {
   min-height: 0;
   display: flex;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid var(--border-soft);
   border-radius: 14px;
   background:
@@ -668,7 +729,7 @@ label {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
+  padding: 6px;
   border-radius: 12px;
   overflow: hidden;
   text-align: center;

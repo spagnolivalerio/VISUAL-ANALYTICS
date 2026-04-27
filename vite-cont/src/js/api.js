@@ -13,6 +13,21 @@ function postJson(url, payload = {}) {
   });
 }
 
+export async function parseJsonResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const body = await response.text();
+    throw new Error(body.slice(0, 120) || "Invalid server response");
+  }
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || `HTTP ${response.status}`);
+  }
+
+  return payload;
+}
+
 export function requestDatasets() {
   return fetch("/api/dataset");
 }
@@ -25,8 +40,10 @@ export function requestNumericAttributes(dataset, clusterAttr) {
   return postJson("/api/numeric-attributes", buildDatasetPayload(dataset, clusterAttr));
 }
 
-export function requestClassicMds(dataset, clusterAttr) {
-  return postJson("/api/mds-classic", buildDatasetPayload(dataset, clusterAttr));
+export function requestKMeans(k, dataset, clusterAttr) {
+  const payload = buildDatasetPayload(dataset, clusterAttr);
+  payload.k = Number(k);
+  return postJson("/api/kmeans", payload);
 }
 
 export function requestNonPropMds(weights, dataset, clusterAttr) {
