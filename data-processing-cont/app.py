@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, request
+from scipy.optimize import linear_sum_assignment
 from sklearn.cluster import KMeans
 from sklearn.manifold import MDS
 from sklearn.preprocessing import StandardScaler
@@ -160,8 +161,23 @@ def build_points(embedding, label_values):
     ]
 
 
+def build_points_with_color_labels(embedding, label_values, color_label_values):
+    points = build_points(embedding, label_values)
+    for index, point in enumerate(points):
+        point["color_label"] = color_label_values[index]
+    return points
+
+
 def build_kmeans_legend_labels(k_value):
     return [f"Cluster {index + 1}" for index in range(k_value)]
+
+
+def build_extra_color_label(cluster_label):
+    return f"__kmeans_extra__:{cluster_label}"
+
+
+def unique_values(values):
+    return list(dict.fromkeys(values))
 
 
 def validate_k_value(k_value, n_samples):
@@ -304,6 +320,92 @@ def build_mds_response(mds, cluster_attr, points, cohesion, separation, extra_fi
     return payload
 
 
+def compute_jaccard(set_a, set_b):
+    union_size = len(set_a | set_b)
+    if union_size == 0:
+        return 0.0
+    return len(set_a & set_b) / union_size
+
+
+def build_label_index_sets(labels):
+    index_sets = {}
+    for index, label in enumerate(labels):
+        index_sets.setdefault(label, set()).add(index)
+    return index_sets
+
+
+def compute_kmeans_label_alignment(kmeans_labels, cluster_labels, source_labels):
+    source_label_values = unique_values(source_labels)
+    kmeans_index_sets = build_label_index_sets(kmeans_labels)
+    source_index_sets = build_label_index_sets(source_labels)
+
+    jaccard_matrix_values = np.zeros(
+        (len(cluster_labels), len(source_label_values)),
+        dtype=float,
+    )
+    for cluster_index, cluster_label in enumerate(cluster_labels):
+        cluster_set = kmeans_index_sets.get(cluster_label, set())
+        for source_index, source_label in enumerate(source_label_values):
+            source_set = source_index_sets.get(source_label, set())
+            jaccard_matrix_values[cluster_index, source_index] = compute_jaccard(
+                cluster_set,
+                source_set,
+            )
+
+    matched_by_cluster = {}
+    if len(cluster_labels) and len(source_label_values):
+        row_indexes, column_indexes = linear_sum_assignment(-jaccard_matrix_values)
+        matched_by_cluster = {
+            cluster_labels[row_index]: source_label_values[column_index]
+            for row_index, column_index in zip(row_indexes, column_indexes)
+        }
+
+    jaccard_matrix = {
+        str(cluster_label): {
+            str(source_label): float(jaccard_matrix_values[cluster_index, source_index])
+            for source_index, source_label in enumerate(source_label_values)
+        }
+        for cluster_index, cluster_label in enumerate(cluster_labels)
+    }
+
+    cluster_label_mapping = []
+    color_label_by_cluster = {}
+    for cluster_index, cluster_label in enumerate(cluster_labels):
+        matched_label = matched_by_cluster.get(cluster_label)
+        if matched_label is None:
+            color_label = build_extra_color_label(cluster_label)
+            best_jaccard = 0.0
+        else:
+            source_index = source_label_values.index(matched_label)
+            color_label = matched_label
+            best_jaccard = float(jaccard_matrix_values[cluster_index, source_index])
+
+        color_label_by_cluster[cluster_label] = color_label
+        cluster_label_mapping.append(
+            {
+                "kmeans_label": cluster_label,
+                "matched_label": matched_label,
+                "jaccard": best_jaccard,
+                "matched": matched_label is not None,
+                "color_key": color_label,
+            }
+        )
+
+    extra_color_labels = [
+        build_extra_color_label(cluster_label)
+        for cluster_label in cluster_labels
+        if cluster_label not in matched_by_cluster
+    ]
+
+    return {
+        "source_legend_labels": source_label_values,
+        "color_domain": [*source_label_values, *extra_color_labels],
+        "jaccard_matrix": jaccard_matrix,
+        "cluster_label_mapping": cluster_label_mapping,
+        "color_label_by_cluster": color_label_by_cluster,
+    }
+
+
 def build_projection_response(mds, cluster_attr, embedding, label_values, extra_fields=None):
     points = build_points(embedding, label_values)
     cohesion, separation = compute_cluster_metrics(points, label_values)
@@ -396,7 +498,7 @@ def kmeans():
     payload = get_request_payload()
 
     try:
-        _, cluster_attr, numeric_features, _ = load_numeric_dataset_context(payload)
+        df, cluster_attr, numeric_features, _ = load_numeric_dataset_context(payload)
         k_value = int(payload.get("k", 0))
     except FileNotFoundError as exc:
         return bad_request(str(exc))
@@ -415,16 +517,33 @@ def kmeans():
 
     legend_labels = build_kmeans_legend_labels(k_value)
     label_values = [legend_labels[int(label)] for label in estimator.labels_.tolist()]
+    source_label_values = df[cluster_attr].tolist()
+    alignment = compute_kmeans_label_alignment(
+        label_values,
+        legend_labels,
+        source_label_values,
+    )
+    color_label_values = [
+        alignment["color_label_by_cluster"][cluster_label]
+        for cluster_label in label_values
+    ]
+    points = build_points_with_color_labels(embedding, label_values, color_label_values)
+    cohesion, separation = compute_cluster_metrics(points, label_values)
 
     return jsonify(
-        build_projection_response(
+        build_mds_response(
             mds,
             cluster_attr,
-            embedding,
-            label_values,
+            points,
+            cohesion,
+            separation,
             {
                 "k": k_value,
                 "legend_labels": legend_labels,
+                "color_domain": alignment["color_domain"],
+                "source_legend_labels": alignment["source_legend_labels"],
+                "jaccard_matrix": alignment["jaccard_matrix"],
+                "cluster_label_mapping": alignment["cluster_label_mapping"],
             },
         )
     ), 200

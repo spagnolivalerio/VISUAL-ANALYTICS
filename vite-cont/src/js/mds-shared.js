@@ -65,18 +65,24 @@ function buildScales(points, innerWidth, innerHeight) {
 }
 
 function buildPalette(size) {
-  if (size <= d3.schemeTableau10.length) {
-    return d3.schemeTableau10.slice(0, size);
-  }
+  return Array.from({ length: size }, (_, index) => {
+    if (index < d3.schemeTableau10.length) {
+      return d3.schemeTableau10[index];
+    }
 
-  return d3.quantize((t) => d3.interpolateSinebow(t * 0.92), size);
+    return d3.interpolateSinebow(((index - d3.schemeTableau10.length) * 0.61803398875) % 1);
+  });
 }
 
-function buildColorScale(points, legendLabels = null) {
+function getPointColorLabel(point) {
+  return point.color_label ?? point.class_label;
+}
+
+function buildColorScale(points, colorDomain = null) {
   const labels =
-    Array.isArray(legendLabels) && legendLabels.length
-      ? [...legendLabels]
-      : [...new Set(points.map((d) => d.class_label))];
+    Array.isArray(colorDomain) && colorDomain.length
+      ? [...colorDomain]
+      : [...new Set(points.map((d) => getPointColorLabel(d)))];
 
   return d3.scaleOrdinal().domain(labels).range(buildPalette(labels.length));
 }
@@ -113,6 +119,7 @@ function buildClusterData(points) {
   const clusters = d3.group(points, (d) => d.class_label);
   const centroids = Array.from(clusters, ([label, items]) => ({
     label,
+    colorLabel: getPointColorLabel(items[0]),
     x: d3.mean(items, (d) => d.x),
     y: d3.mean(items, (d) => d.y),
   }));
@@ -129,7 +136,7 @@ function renderPoints(pointsLayer, points, x, y, color) {
     .attr("cx", (d) => x(d.x))
     .attr("cy", (d) => y(d.y))
     .attr("r", POINT_RADIUS)
-    .attr("fill", (d) => color(d.class_label))
+    .attr("fill", (d) => color(getPointColorLabel(d)))
     .attr("opacity", DEFAULT_POINT_OPACITY);
 
   circles.append("title").text((d) => `id: ${d.id}, cluster: ${d.class_label}`);
@@ -144,7 +151,7 @@ function renderCentroids(centroidLayer, centroids, x, y, color) {
     .attr("cx", (d) => x(d.x))
     .attr("cy", (d) => y(d.y))
     .attr("r", CENTROID_RADIUS)
-    .attr("fill", (d) => color(d.label))
+    .attr("fill", (d) => color(d.colorLabel))
     .attr("stroke", "#ffffff")
     .attr("stroke-width", 1.5)
     .attr("opacity", DEFAULT_CENTROID_OPACITY)
@@ -160,20 +167,36 @@ function applyCentroidVisibility(centroidLayer, showCentroids) {
     .style("pointer-events", showCentroids ? "auto" : "none");
 }
 
-function renderLegend(container, labels, color, showLegend) {
+function normalizeLegendItems(labels, legendItems = null) {
+  if (Array.isArray(legendItems) && legendItems.length) {
+    return legendItems.map((item) => ({
+      label: item.label,
+      colorLabel: item.colorLabel ?? item.label,
+      title: item.title,
+    }));
+  }
+
+  return labels.map((label) => ({ label, colorLabel: label }));
+}
+
+function renderLegend(container, labels, color, showLegend, legendItems = null) {
   const legend = document.createElement("div");
   const list = document.createElement("div");
+  const resolvedItems = normalizeLegendItems(labels, legendItems);
   legend.className = "plot-legend";
   legend.hidden = !showLegend;
   list.className = "plot-legend-list";
 
-  labels.forEach((label) => {
+  resolvedItems.forEach(({ label, colorLabel, title }) => {
     const item = document.createElement("div");
     const swatch = document.createElement("span");
     const text = document.createElement("span");
     item.className = "plot-legend-item";
+    if (title) {
+      item.title = title;
+    }
     swatch.className = "plot-legend-swatch";
-    swatch.style.backgroundColor = color(label);
+    swatch.style.backgroundColor = color(colorLabel);
     text.className = "plot-legend-label";
     text.textContent = String(label);
     item.appendChild(swatch);
@@ -429,11 +452,13 @@ export function renderMdsPlot({
   showCentroids,
   clearContainer = (node) => (node.innerHTML = ""),
   legendLabels = null,
+  colorDomain = null,
+  legendItems = null,
   selectionState = null,
 }) {
   const { svg, g, innerWidth, innerHeight } = buildChart(container, clearContainer);
   const { x, y } = buildScales(points, innerWidth, innerHeight);
-  const color = buildColorScale(points, legendLabels);
+  const color = buildColorScale(points, colorDomain);
   const { pointsLayer, centroidLayer, linksLayer } = createLayers(g);
   const { clusters, centroids } = buildClusterData(points);
   const resolvedLegendLabels =
@@ -444,7 +469,13 @@ export function renderMdsPlot({
   const circles = renderPoints(pointsLayer, points, x, y, color);
   const centroidCircles = renderCentroids(centroidLayer, centroids, x, y, color);
   applyCentroidVisibility(centroidLayer, showCentroids);
-  renderLegend(container, resolvedLegendLabels, color, container.dataset.showLegend === "true");
+  renderLegend(
+    container,
+    resolvedLegendLabels,
+    color,
+    container.dataset.showLegend === "true",
+    legendItems
+  );
 
   const selectionController = createSelectionController(
     points,
