@@ -1,7 +1,8 @@
 import { getCurrentContext } from "./app-context";
-import { getAssignedConfiguration } from "./config-selection";
+import { getAssignedConfiguration, setDisplayedConfiguration } from "./config-selection";
 import { configurationMatchesContext } from "./config-store";
 import { renderNonPropFromSaved } from "./mds-nonprop";
+import { renderSilhouetteChart } from "./silhouette-chart";
 import { applyWeightsToPanel, renderWeightsPanel } from "./weights-panel";
 
 function getStatusElement() {
@@ -29,6 +30,7 @@ async function syncConfigurationToPanel(targetId) {
   }
 
   renderNonPropFromSaved(config);
+  setDisplayedConfiguration(config);
 
   const applied = applyWeightsToPanel(config.weights);
   if (!applied) {
@@ -36,6 +38,7 @@ async function syncConfigurationToPanel(targetId) {
   }
 
   setStatus(`Configuration t=${config.timestep} synchronized.`);
+  await renderSilhouetteChart();
 }
 
 export function initConfigurationSync() {

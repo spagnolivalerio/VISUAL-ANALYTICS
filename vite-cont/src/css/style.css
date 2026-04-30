@@ -291,13 +291,6 @@ label {
   min-width: 0;
 }
 
-.plot-timestep {
-  margin-left: 6px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-secondary);
-}
-
 .plot-container,
 .weights-panel,
 .silhouette-scroll,
@@ -324,13 +317,6 @@ label {
   text-align: center;
   color: var(--text-secondary);
   font-size: 12px;
-}
-
-.plot-status {
-  min-height: 16px;
-  margin: 0 0 8px;
-  font-size: 11px;
-  color: var(--text-secondary);
 }
 
 .plot-control-btn {
@@ -374,20 +360,12 @@ label {
   color: var(--text-muted);
 }
 
-.kmeans-k-input {
-  width: 52px;
-  padding: 0;
-  border: 0;
-  background: transparent;
+.kmeans-k-value {
+  min-width: 20px;
   font-size: 12px;
   font-weight: 700;
   color: var(--text-primary);
-  outline: none;
-}
-
-.kmeans-k-input::-webkit-outer-spin-button,
-.kmeans-k-input::-webkit-inner-spin-button {
-  margin: 0;
+  text-align: center;
 }
 
 .plot-legend {
@@ -586,6 +564,41 @@ label {
 .silhouette-panel {
   min-width: 0;
   min-height: 0;
+}
+
+.silhouette-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.silhouette-toolbar h2 {
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.silhouette-view-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.silhouette-view-select {
+  height: var(--control-height);
+  min-width: 126px;
+  border: var(--panel-border);
+  border-radius: 10px;
+  padding: 0 9px;
+  background: #ffffff;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .silhouette-scroll {

@@ -6,19 +6,23 @@ import {
   clearAssignedConfiguration,
   clearInvalidAssignments,
   clearSelectionIfMissing,
+  getActiveSilhouetteView,
   getAssignedConfiguration,
   getAssignedConfigurationId,
+  getDisplayedConfigurationId,
   getLineSelectionId,
   getStarTarget,
   setLineSelection,
+  setActiveSilhouetteView,
 } from "./config-selection";
 import { deleteConfiguration, getConfigurationsForContext } from "./config-store";
 import { renderStarGraph } from "./star-graph";
 
 const HEIGHT = 220;
 const MARGIN = { top: 20, right: 20, bottom: 40, left: 50 };
-const DEFAULT_POINT_RADIUS = 3.5;
-const HIGHLIGHTED_POINT_RADIUS = 5;
+const DEFAULT_POINT_RADIUS = 5;
+const HIGHLIGHTED_POINT_RADIUS = 7;
+const SELECTION_RING_RADIUS = 11;
 const DEFAULT_POINT_OPACITY = 0.7;
 const HIGHLIGHTED_POINT_OPACITY = 1;
 const STAR_GRAPH_IDS = ["star-graph-1", "star-graph-2"];
@@ -79,20 +83,39 @@ function computeSilhouetteScore(points) {
   return scores.reduce((sum, score) => sum + score, 0) / scores.length;
 }
 
-function resolveSilhouetteScore(item) {
-  const storedScore = Number(item.silhouetteScore);
+function getViewPoints(item, view = getActiveSilhouetteView()) {
+  if (view === "kmeans") {
+    return item.views?.kmeans?.points || [];
+  }
+
+  return item.views?.labelBased?.points || item.points || [];
+}
+
+function resolveSilhouetteScore(item, view = getActiveSilhouetteView()) {
+  const storedScore = Number(item.silhouetteScores?.[view]);
   if (Number.isFinite(storedScore)) {
     return storedScore;
   }
 
-  return computeSilhouetteScore(item.points);
+  const legacyScore = view === "labelBased" ? Number(item.silhouetteScore) : NaN;
+  if (Number.isFinite(legacyScore)) {
+    return legacyScore;
+  }
+
+  const viewScore = Number(item.views?.[view]?.silhouetteScore);
+  if (Number.isFinite(viewScore)) {
+    return viewScore;
+  }
+
+  return computeSilhouetteScore(getViewPoints(item, view));
 }
 
-function normalizeConfigurations(items) {
+function normalizeConfigurations(items, view = getActiveSilhouetteView()) {
   return items
     .map((item) => ({
       ...item,
-      silhouetteScore: truncate3(resolveSilhouetteScore(item)),
+      activeSilhouetteView: view,
+      silhouetteScore: truncate3(resolveSilhouetteScore(item, view)),
       timestep: Number(item.timestep),
     }))
     .filter((item) => Number.isFinite(item.silhouetteScore));
@@ -107,9 +130,10 @@ function syncSelectionState(points, context) {
 }
 
 function refreshStarGraphs() {
+  const view = getActiveSilhouetteView();
   STAR_GRAPH_IDS.forEach((targetId) => {
-    const config = getAssignedConfiguration(targetId);
-    const silhouetteScore = config ? truncate3(resolveSilhouetteScore(config)) : null;
+    const config = getAssignedConfiguration(targetId, view);
+    const silhouetteScore = config ? truncate3(resolveSilhouetteScore(config, view)) : null;
     renderStarGraph(config?.weights || null, targetId, silhouetteScore);
   });
 }
@@ -209,33 +233,51 @@ function renderSilhouetteLine(svg, points, xScale, yScale) {
     .attr("stroke-width", 2);
 }
 
-function applyPointStyles(pointGroup) {
+function getHighlightColor(point, leftId, rightId, lineSelectionId) {
+  if (point.id === leftId && point.id === rightId) return "#f59e0b";
+  if (point.id === leftId) return "#22c55e";
+  if (point.id === rightId) return "#ef4444";
+  return "#1f6feb";
+}
+
+function isHighlightedPoint(point, leftId, rightId, lineSelectionId) {
+  return point.id === leftId || point.id === rightId || point.id === lineSelectionId;
+}
+
+function applyPointStyles(pointGroup, ringGroup = null) {
   const leftId = getAssignedConfigurationId("star-graph-1");
   const rightId = getAssignedConfigurationId("star-graph-2");
   const lineSelectionId = getLineSelectionId();
+  const displayedId = getDisplayedConfigurationId();
 
   pointGroup
     .attr("r", (point) =>
-      point.id === leftId || point.id === rightId || point.id === lineSelectionId
+      isHighlightedPoint(point, leftId, rightId, lineSelectionId)
         ? HIGHLIGHTED_POINT_RADIUS
         : DEFAULT_POINT_RADIUS
     )
     .attr("opacity", (point) =>
-      point.id === leftId || point.id === rightId || point.id === lineSelectionId
+      isHighlightedPoint(point, leftId, rightId, lineSelectionId)
         ? HIGHLIGHTED_POINT_OPACITY
         : DEFAULT_POINT_OPACITY
     )
-    .attr("fill", (point) => {
-      if (point.id === leftId && point.id === rightId) return "#f59e0b";
-      if (point.id === leftId) return "#22c55e";
-      if (point.id === rightId) return "#ef4444";
-      return "#1f6feb";
-    })
+    .attr("fill", (point) => getHighlightColor(point, leftId, rightId, lineSelectionId))
     .attr("stroke", (point) => (point.id === lineSelectionId ? "#111827" : "none"))
     .attr("stroke-width", (point) => (point.id === lineSelectionId ? 2 : 0));
+
+  if (!ringGroup) {
+    return;
+  }
+
+  ringGroup
+    .attr("r", SELECTION_RING_RADIUS)
+    .attr("fill", "none")
+    .attr("stroke", "#111827")
+    .attr("stroke-width", (point) => (point.id === displayedId ? 2.6 : 0))
+    .attr("opacity", (point) => (point.id === displayedId ? 1 : 0));
 }
 
-function handlePointSelection(point, pointGroup) {
+function handlePointSelection(point, pointGroup, ringGroup) {
   const targetId = getStarTarget();
 
   setLineSelection(point);
@@ -244,10 +286,37 @@ function handlePointSelection(point, pointGroup) {
     renderStarGraph(point.weights, targetId, point.silhouetteScore);
   }
 
-  applyPointStyles(pointGroup);
+  applyPointStyles(pointGroup, ringGroup);
+}
+
+function bindViewSelector() {
+  const selector = document.getElementById("silhouette-view-select");
+  if (!selector) {
+    return;
+  }
+
+  selector.value = getActiveSilhouetteView();
+  if (selector.dataset.bound === "true") {
+    return;
+  }
+
+  selector.addEventListener("change", async () => {
+    setActiveSilhouetteView(selector.value);
+    await renderSilhouetteChart();
+  });
+  selector.dataset.bound = "true";
 }
 
 function renderPoints(svg, points, xScale, yScale) {
+  const ringGroup = svg
+    .append("g")
+    .selectAll("circle")
+    .data(points)
+    .join("circle")
+    .attr("cx", (point) => xScale(point.timestep))
+    .attr("cy", (point) => yScale(point.silhouetteScore))
+    .style("pointer-events", "none");
+
   const pointGroup = svg
     .append("g")
     .selectAll("circle")
@@ -256,9 +325,9 @@ function renderPoints(svg, points, xScale, yScale) {
     .attr("cx", (point) => xScale(point.timestep))
     .attr("cy", (point) => yScale(point.silhouetteScore))
     .style("cursor", "pointer")
-    .on("click", (_, point) => handlePointSelection(point, pointGroup));
+    .on("click", (_, point) => handlePointSelection(point, pointGroup, ringGroup));
 
-  applyPointStyles(pointGroup);
+  applyPointStyles(pointGroup, ringGroup);
   return pointGroup;
 }
 
@@ -333,9 +402,11 @@ export async function renderSilhouetteChart() {
   }
 
   const context = getCurrentContext();
+  const view = getActiveSilhouetteView();
+  bindViewSelector();
 
   try {
-    const points = normalizeConfigurations(await getConfigurationsForContext(context));
+    const points = normalizeConfigurations(await getConfigurationsForContext(context), view);
     syncSelectionState(points, context);
 
     if (!points.length) {

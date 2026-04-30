@@ -50,8 +50,11 @@ export async function saveConfiguration({
   clusterAttr,
   weights,
   silhouetteScore,
+  silhouetteScores,
+  views,
   points,
   attributes,
+  k,
 }) {
   const items = readStore();
   const context = normalizeContext(dataset, clusterAttr);
@@ -63,6 +66,9 @@ export async function saveConfiguration({
     weights: weights || {},
     attributes: Array.isArray(attributes) ? [...attributes] : Object.keys(weights || {}),
     silhouetteScore,
+    silhouetteScores: silhouetteScores || null,
+    views: views || null,
+    k: Number.isFinite(Number(k)) ? Number(k) : null,
     points: Array.isArray(points) ? points : [],
   };
 

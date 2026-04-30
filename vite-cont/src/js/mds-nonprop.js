@@ -1,7 +1,13 @@
 import { parseJsonResponse, requestNonPropMds } from "./api";
 import { getCurrentContext } from "./app-context";
-import { assignConfigurationToStar, getStarTarget } from "./config-selection";
+import {
+  assignConfigurationToStar,
+  getActiveSilhouetteView,
+  getStarTarget,
+  setDisplayedConfiguration,
+} from "./config-selection";
 import { getNextTimestep, saveConfiguration } from "./config-store";
+import { loadKMeans, renderKMeansFromSaved, renderKMeansResult } from "./kmeans-view";
 import { configureCentroidToggle, configureLegendToggle, createSelectionState, renderMdsPlot } from "./mds-shared";
 import { renderSilhouetteChart } from "./silhouette-chart";
 import { renderStarGraph } from "./star-graph";
@@ -11,7 +17,7 @@ let resizeObserver;
 let lastPoints = [];
 const nonPropSelectionState = createSelectionState();
 
-async function loadNonPropPoints(weights, dataset, clusterAttr) {
+async function loadLabelBasedMds(weights, dataset, clusterAttr) {
   const payload = await parseJsonResponse(await requestNonPropMds(weights, dataset, clusterAttr));
 
   return {
@@ -22,7 +28,7 @@ async function loadNonPropPoints(weights, dataset, clusterAttr) {
   };
 }
 
-async function persistConfiguration(points, silhouetteScore, weights, dataset, clusterAttr) {
+async function persistConfiguration(labelBased, kmeans, weights, dataset, clusterAttr) {
   const context = getCurrentContext();
   const resolvedDataset = dataset ?? context.dataset;
   const resolvedClusterAttr = clusterAttr ?? context.clusterAttr;
@@ -36,9 +42,18 @@ async function persistConfiguration(points, silhouetteScore, weights, dataset, c
     dataset: resolvedDataset,
     clusterAttr: resolvedClusterAttr,
     weights,
-    silhouetteScore,
-    points,
+    silhouetteScore: labelBased.silhouetteScore,
+    silhouetteScores: {
+      labelBased: labelBased.silhouetteScore,
+      kmeans: kmeans.silhouetteScore,
+    },
+    views: {
+      labelBased,
+      kmeans,
+    },
+    points: labelBased.points,
     attributes: Object.keys(weights),
+    k: kmeans.k,
   });
 
   return { savedConfig, timestep };
@@ -72,8 +87,7 @@ function drawNonPropMds(container, points, showCentroids) {
 
 export function renderNonPropFromSaved(config) {
   const container = document.getElementById("mds-non-proportional-container");
-  const timestepLabel = document.getElementById("nonprop-timestep");
-  const points = config?.points;
+  const points = config?.views?.labelBased?.points || config?.points;
 
   if (!container || !Array.isArray(points) || !points.length) {
     return;
@@ -82,31 +96,25 @@ export function renderNonPropFromSaved(config) {
   lastPoints = points;
   drawNonPropMds(container, points, container.dataset.showCentroids === "true");
 
-  if (timestepLabel) {
-    timestepLabel.textContent = config?.timestep === undefined ? "(saved)" : `(t=${config.timestep})`;
-  }
+  renderKMeansFromSaved(config);
 }
 
 export function resetNonPropMds() {
   const container = document.getElementById("mds-non-proportional-container");
   const status = document.getElementById("nonprop-status");
-  const timestepLabel = document.getElementById("nonprop-timestep");
 
   lastPoints = [];
   nonPropSelectionState.clear();
 
   if (container) {
     container.classList.add("plot-placeholder");
-    container.textContent = "Adjust the weights and run Non-Proportional MDS.";
+    container.textContent = "Adjust the weights and run MDS.";
   }
 
   if (status) {
     status.textContent = "";
   }
 
-  if (timestepLabel) {
-    timestepLabel.textContent = "";
-  }
 }
 
 export function initNonPropMds() {
@@ -115,7 +123,6 @@ export function initNonPropMds() {
   const status = document.getElementById("nonprop-status");
   const toggleButton = document.getElementById("toggle-centroids-nonprop");
   const legendButton = document.getElementById("toggle-legend-nonprop");
-  const timestepLabel = document.getElementById("nonprop-timestep");
 
   if (!container || !runButton || !status) {
     return;
@@ -146,30 +153,37 @@ export function initNonPropMds() {
     status.textContent = "Computing...";
 
     try {
-      const { points, silhouetteScore } = await loadNonPropPoints(weights, dataset, clusterAttr);
-      if (!points.length) {
+      const [labelBased, kmeans] = await Promise.all([
+        loadLabelBasedMds(weights, dataset, clusterAttr),
+        loadKMeans(dataset, clusterAttr, weights),
+      ]);
+
+      if (!labelBased.points.length || !kmeans.points.length) {
         throw new Error("No points returned.");
       }
 
-      lastPoints = points;
-      drawNonPropMds(container, points, container.dataset.showCentroids === "true");
+      lastPoints = labelBased.points;
+      drawNonPropMds(container, labelBased.points, container.dataset.showCentroids === "true");
+      renderKMeansResult(kmeans);
 
       const targetId = getStarTarget();
       try {
         const { savedConfig, timestep } = await persistConfiguration(
-          points,
-          silhouetteScore,
+          labelBased,
+          kmeans,
           weights,
           dataset,
           clusterAttr
         );
         status.textContent = `Configuration saved (t=${timestep}).`;
-        if (timestepLabel) {
-          timestepLabel.textContent = `(t=${timestep})`;
-        }
+        setDisplayedConfiguration(savedConfig);
         if (targetId) {
           assignConfigurationToStar(targetId, savedConfig);
-          renderStarGraph(weights, targetId, silhouetteScore);
+          const activeScore =
+            getActiveSilhouetteView() === "kmeans"
+              ? kmeans.silhouetteScore
+              : labelBased.silhouetteScore;
+          renderStarGraph(weights, targetId, activeScore);
         }
         renderSilhouetteChart();
       } catch (error) {

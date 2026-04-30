@@ -75,23 +75,13 @@
             <div class="panel-header plot-title-row">
               <div>
                 <h2>KMeans Clustering</h2>
-                <p class="panel-subtitle">Clusters computed in feature space, points projected with classical MDS.</p>
+                <p class="panel-subtitle">Weighted KMeans view projected with the shared MDS configuration.</p>
               </div>
               <div class="plot-controls kmeans-controls">
-                <label class="kmeans-inline-control" for="kmeans-k-input">
+                <div class="kmeans-inline-control" aria-label="KMeans cluster count">
                   <span>k</span>
-                  <input
-                    id="kmeans-k-input"
-                    class="kmeans-k-input"
-                    type="number"
-                    inputmode="numeric"
-                    min="2"
-                    step="1"
-                    value="3"
-                    aria-label="Number of clusters"
-                  />
-                </label>
-                <button id="run-kmeans-btn" type="button" class="plot-run-btn">Run</button>
+                  <strong id="kmeans-k-value" class="kmeans-k-value">-</strong>
+                </div>
                 <button
                   id="toggle-legend-kmeans"
                   type="button"
@@ -120,18 +110,14 @@
                 </button>
               </div>
             </div>
-            <p id="kmeans-status" class="plot-status" aria-live="polite"></p>
             <div id="kmeans-container" class="plot-container"></div>
           </article>
 
           <article class="panel-card plot-card">
             <div class="panel-header plot-title-row">
               <div>
-                <h2>
-                  Non-Proportional MDS
-                  <span id="nonprop-timestep" class="plot-timestep"></span>
-                </h2>
-                <p class="panel-subtitle">Weighted distance view driven by the sliders.</p>
+                <h2>Label Based Clustering</h2>
+                <p class="panel-subtitle">Dataset labels projected with the shared MDS configuration.</p>
               </div>
               <div class="plot-controls">
                 <button
@@ -198,6 +184,19 @@
 
         <section class="bottom-row" aria-label="Silhouette score chart and star graphs">
           <div class="silhouette-panel panel-card">
+            <div class="silhouette-toolbar">
+              <div>
+                <h2>Silhouette History</h2>
+                <p class="panel-subtitle">Switch between saved KMeans and label-based scores.</p>
+              </div>
+              <label class="silhouette-view-control" for="silhouette-view-select">
+                <span>View</span>
+                <select id="silhouette-view-select" class="silhouette-view-select">
+                  <option value="labelBased">Label based</option>
+                  <option value="kmeans">KMeans</option>
+                </select>
+              </label>
+            </div>
             <div class="silhouette-scroll">
               <button
                 id="delete-config-btn"

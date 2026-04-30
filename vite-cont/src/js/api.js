@@ -40,9 +40,9 @@ export function requestNumericAttributes(dataset, clusterAttr) {
   return postJson("/api/numeric-attributes", buildDatasetPayload(dataset, clusterAttr));
 }
 
-export function requestKMeans(k, dataset, clusterAttr) {
+export function requestKMeans(dataset, clusterAttr, weights = null) {
   const payload = buildDatasetPayload(dataset, clusterAttr);
-  payload.k = Number(k);
+  if (weights) payload.weights = weights;
   return postJson("/api/kmeans", payload);
 }
 

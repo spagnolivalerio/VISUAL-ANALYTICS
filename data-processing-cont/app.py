@@ -305,6 +305,10 @@ def project_weighted_mds(scaled_features, weights):
     return mds, mds.fit_transform(dissimilarities)
 
 
+def apply_feature_weights(scaled_features, weights):
+    return scaled_features * np.sqrt(weights)
+
+
 def build_mds_response(mds, cluster_attr, points, cohesion, separation, extra_fields=None):
     payload = {
         "count": len(points),
@@ -496,13 +500,18 @@ def mds_nonprop():
 @app.post("/kmeans")
 def kmeans():
     payload = get_request_payload()
+    weights_payload = payload.get("weights")
+    attributes = []
 
     try:
-        df, cluster_attr, numeric_features, _ = load_numeric_dataset_context(payload)
-        k_value = int(payload.get("k", 0))
+        df, cluster_attr, numeric_features, attributes = load_numeric_dataset_context(payload)
+        k_value = len(unique_values(df[cluster_attr].tolist()))
+        weights = parse_weights(weights_payload, attributes) if weights_payload is not None else None
     except FileNotFoundError as exc:
         return bad_request(str(exc))
     except ValueError as exc:
+        if "weights" in str(exc) or "Missing weight" in str(exc):
+            return bad_request(str(exc), {"expected_attributes": attributes})
         return bad_request(str(exc))
 
     try:
@@ -511,9 +520,15 @@ def kmeans():
         return bad_request(str(exc))
 
     scaled = scale_features(numeric_features.to_numpy())
-    mds, embedding = project_metric_mds(scaled)
+    if weights is None:
+        mds, embedding = project_metric_mds(scaled)
+        clustering_features = scaled
+    else:
+        mds, embedding = project_weighted_mds(scaled, weights)
+        clustering_features = apply_feature_weights(scaled, weights)
+
     estimator = KMeans(n_clusters=k_value, random_state=SEED, n_init=10)
-    estimator.fit(scaled)
+    estimator.fit(clustering_features)
 
     legend_labels = build_kmeans_legend_labels(k_value)
     label_values = [legend_labels[int(label)] for label in estimator.labels_.tolist()]

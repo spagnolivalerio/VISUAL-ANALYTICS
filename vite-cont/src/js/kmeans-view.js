@@ -5,30 +5,13 @@ import { configureCentroidToggle, configureLegendToggle, createSelectionState, r
 let resizeObserver;
 let lastResult = null;
 const kmeansSelectionState = createSelectionState();
-const DEFAULT_K = 3;
-const MIN_K = 2;
 
 function getContainer() {
   return document.getElementById("kmeans-container");
 }
 
-function getStatusElement() {
-  return document.getElementById("kmeans-status");
-}
-
-function getRunButton() {
-  return document.getElementById("run-kmeans-btn");
-}
-
-function getKInput() {
-  return document.getElementById("kmeans-k-input");
-}
-
-function setStatus(message) {
-  const status = getStatusElement();
-  if (status) {
-    status.textContent = message;
-  }
+function getKValueElement() {
+  return document.getElementById("kmeans-k-value");
 }
 
 function setPlaceholder(container, message) {
@@ -44,34 +27,26 @@ function resolveIdleMessage() {
   if (!clusterAttr) {
     return "Select a cluster attribute before running KMeans.";
   }
-  return "Enter a value for k and run KMeans.";
+  return "Adjust weights and run MDS.";
 }
 
-function normalizeKValue(rawValue) {
-  const numeric = Number(rawValue);
-  if (!Number.isFinite(numeric)) {
-    return DEFAULT_K;
+function setKValue(value) {
+  const element = getKValueElement();
+  if (!element) {
+    return;
   }
 
-  return Math.max(MIN_K, Math.round(numeric));
+  element.textContent = Number.isFinite(Number(value)) ? String(Number(value)) : "-";
 }
 
-function syncKInputValue() {
-  const input = getKInput();
-  if (!input) {
-    return DEFAULT_K;
-  }
-
-  const nextValue = normalizeKValue(input.valueAsNumber);
-  input.value = String(nextValue);
-  return nextValue;
-}
-
-async function loadKMeans(kValue, dataset, clusterAttr) {
-  const payload = await parseJsonResponse(await requestKMeans(kValue, dataset, clusterAttr));
+export async function loadKMeans(dataset, clusterAttr, weights = null) {
+  const payload = await parseJsonResponse(await requestKMeans(dataset, clusterAttr, weights));
 
   return {
     k: Number(payload.k),
+    silhouetteScore: Number.isFinite(Number(payload.silhouette_score))
+      ? Number(payload.silhouette_score)
+      : 0,
     legendLabels: Array.isArray(payload.legend_labels) ? payload.legend_labels : [],
     colorDomain: Array.isArray(payload.color_domain) ? payload.color_domain : [],
     clusterLabelMapping: Array.isArray(payload.cluster_label_mapping)
@@ -131,70 +106,35 @@ function observeResize(container) {
   resizeObserver.observe(container);
 }
 
-async function runKMeans() {
+export function renderKMeansResult(result) {
   const container = getContainer();
-  const input = getKInput();
-  const runButton = getRunButton();
-  const { dataset, clusterAttr } = getCurrentContext();
-
-  if (!container || !input || !runButton) {
-    return;
-  }
-  if (!dataset || !clusterAttr) {
-    setStatus("Select a dataset and cluster attribute first.");
-    if (!lastResult) {
-      setPlaceholder(container, resolveIdleMessage());
-    }
+  if (!container || !result?.points?.length) {
     return;
   }
 
-  const kValue = syncKInputValue();
+  lastResult = result;
+  drawKMeans(container, result);
+  observeResize(container);
+  setKValue(result.k);
+}
 
-  runButton.disabled = true;
-  setStatus("Computing KMeans...");
-  if (!lastResult) {
-    setPlaceholder(container, "Computing KMeans clusters...");
+export function renderKMeansFromSaved(config) {
+  const result = config?.views?.kmeans;
+  if (!result?.points?.length) {
+    return;
   }
 
-  try {
-    const result = await loadKMeans(kValue, dataset, clusterAttr);
-    if (!result.points.length) {
-      throw new Error("No points returned.");
-    }
-
-    lastResult = result;
-    drawKMeans(container, result);
-    observeResize(container);
-    setStatus(`KMeans ready with k=${result.k}.`);
-  } catch (error) {
-    if (!lastResult) {
-      setPlaceholder(container, `KMeans request failed: ${error.message}`);
-    }
-    setStatus(`KMeans request failed: ${error.message}`);
-  } finally {
-    runButton.disabled = false;
-  }
+  renderKMeansResult(result);
 }
 
 export function resetKMeansView() {
   const container = getContainer();
-  const input = getKInput();
-  const runButton = getRunButton();
-  const { dataset, clusterAttr } = getCurrentContext();
 
   resizeObserver?.disconnect();
   resizeObserver = null;
   lastResult = null;
   kmeansSelectionState.clear();
-  setStatus("");
-
-  if (input) {
-    input.disabled = !dataset || !clusterAttr;
-    input.value = String(normalizeKValue(input.valueAsNumber));
-  }
-  if (runButton) {
-    runButton.disabled = !dataset || !clusterAttr;
-  }
+  setKValue(null);
 
   if (!container) {
     return;
@@ -207,10 +147,8 @@ export function initKMeansView() {
   const container = getContainer();
   const toggleButton = document.getElementById("toggle-centroids-kmeans");
   const legendButton = document.getElementById("toggle-legend-kmeans");
-  const runButton = getRunButton();
-  const input = getKInput();
 
-  if (!container || !toggleButton || !legendButton || !runButton || !input) {
+  if (!container || !toggleButton || !legendButton) {
     return;
   }
 
@@ -218,20 +156,4 @@ export function initKMeansView() {
   configureLegendToggle(container, legendButton);
   resetKMeansView();
 
-  if (runButton.dataset.bound !== "true") {
-    runButton.addEventListener("click", runKMeans);
-    runButton.dataset.bound = "true";
-  }
-
-  if (input.dataset.bound !== "true") {
-    input.addEventListener("change", syncKInputValue);
-    input.addEventListener("blur", syncKInputValue);
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        runKMeans();
-      }
-    });
-    input.dataset.bound = "true";
-  }
 }
