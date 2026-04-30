@@ -14,7 +14,7 @@ const chartState = new Map();
 const resizeObserverByTarget = new Map();
 const resizeFrameByTarget = new Map();
 
-function formatRateo(value) {
+function formatSilhouetteScore(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
     return null;
   }
@@ -22,24 +22,24 @@ function formatRateo(value) {
   return Number(value).toFixed(3);
 }
 
-function getRateoBadge(targetId) {
-  return document.getElementById(targetId.replace("star-graph", "star-rateo"));
+function getSilhouetteBadge(targetId) {
+  return document.getElementById(targetId.replace("star-graph", "star-silhouette"));
 }
 
-function updateRateoBadge(targetId, rateo) {
-  const badge = getRateoBadge(targetId);
+function updateSilhouetteBadge(targetId, silhouetteScore) {
+  const badge = getSilhouetteBadge(targetId);
   if (!badge) {
     return;
   }
 
-  const rateoText = formatRateo(rateo);
-  if (rateoText === null) {
+  const scoreText = formatSilhouetteScore(silhouetteScore);
+  if (scoreText === null) {
     badge.hidden = true;
     badge.textContent = "";
     return;
   }
 
-  badge.textContent = `ratio: ${rateoText}`;
+  badge.textContent = `silhouette: ${scoreText}`;
   badge.hidden = false;
 }
 
@@ -365,7 +365,7 @@ function scheduleResizeRender(targetId) {
     if (!currentState) {
       return;
     }
-    renderStarGraph(currentState.weights, targetId, currentState.rateo);
+    renderStarGraph(currentState.weights, targetId, currentState.silhouetteScore);
   });
 
   resizeFrameByTarget.set(targetId, nextFrame);
@@ -384,25 +384,25 @@ function bindResizeObserver(targetId, container) {
   resizeObserverByTarget.set(targetId, observer);
 }
 
-export function renderStarGraph(weights, targetId, rateo = null) {
+export function renderStarGraph(weights, targetId, silhouetteScore = null) {
   const container = document.getElementById(targetId);
   if (!container) {
     return;
   }
 
-  chartState.set(targetId, { weights, rateo });
+  chartState.set(targetId, { weights, silhouetteScore });
   bindResizeObserver(targetId, container);
 
   container.innerHTML = "";
   container.dataset.empty = "true";
-  updateRateoBadge(targetId, null);
+  updateSilhouetteBadge(targetId, null);
 
   if (!weights || !Object.keys(weights).length) {
     container.textContent = "No configuration selected.";
     return;
   }
 
-  updateRateoBadge(targetId, rateo);
+  updateSilhouetteBadge(targetId, silhouetteScore);
   renderRadarChart(container, targetId, weights);
   container.dataset.empty = "false";
 }

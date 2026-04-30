@@ -22,17 +22,80 @@ const HIGHLIGHTED_POINT_RADIUS = 5;
 const DEFAULT_POINT_OPACITY = 0.7;
 const HIGHLIGHTED_POINT_OPACITY = 1;
 const STAR_GRAPH_IDS = ["star-graph-1", "star-graph-2"];
+const MIN_SILHOUETTE_SPAN = 0.001;
 
 function truncate3(value) {
-  return Math.trunc(value * 1000) / 1000;
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? Math.trunc(numericValue * 1000) / 1000 : null;
+}
+
+function distance(pointA, pointB) {
+  return Math.hypot(pointA.x - pointB.x, pointA.y - pointB.y);
+}
+
+function meanDistance(point, clusterPoints) {
+  if (!clusterPoints.length) {
+    return 0;
+  }
+
+  const total = clusterPoints.reduce((sum, otherPoint) => sum + distance(point, otherPoint), 0);
+  return total / clusterPoints.length;
+}
+
+function computeSilhouetteScore(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return null;
+  }
+
+  const clusters = d3.group(points, (point) => point.class_label);
+  if (clusters.size < 2 || clusters.size >= points.length) {
+    return null;
+  }
+
+  const scores = points.map((point) => {
+    const sameCluster = (clusters.get(point.class_label) || []).filter(
+      (otherPoint) => otherPoint.id !== point.id
+    );
+    if (!sameCluster.length) {
+      return 0;
+    }
+
+    const cohesion = meanDistance(point, sameCluster);
+    let nearestSeparation = Infinity;
+
+    clusters.forEach((clusterPoints, label) => {
+      if (label === point.class_label) {
+        return;
+      }
+      nearestSeparation = Math.min(nearestSeparation, meanDistance(point, clusterPoints));
+    });
+
+    const denominator = Math.max(cohesion, nearestSeparation);
+    return denominator > 0 && Number.isFinite(denominator)
+      ? (nearestSeparation - cohesion) / denominator
+      : 0;
+  });
+
+  return scores.reduce((sum, score) => sum + score, 0) / scores.length;
+}
+
+function resolveSilhouetteScore(item) {
+  const storedScore = Number(item.silhouetteScore);
+  if (Number.isFinite(storedScore)) {
+    return storedScore;
+  }
+
+  return computeSilhouetteScore(item.points);
 }
 
 function normalizeConfigurations(items) {
-  return items.map((item) => ({
-    ...item,
-    rateo: truncate3(Number(item.rateo)),
-    timestep: Number(item.timestep),
-  }));
+  return items
+    .map((item) => ({
+      ...item,
+      silhouetteScore: truncate3(resolveSilhouetteScore(item)),
+      timestep: Number(item.timestep),
+    }))
+    .filter((item) => Number.isFinite(item.silhouetteScore));
 }
 
 function syncSelectionState(points, context) {
@@ -46,16 +109,18 @@ function syncSelectionState(points, context) {
 function refreshStarGraphs() {
   STAR_GRAPH_IDS.forEach((targetId) => {
     const config = getAssignedConfiguration(targetId);
-    renderStarGraph(config?.weights || null, targetId, config?.rateo ?? null);
+    const silhouetteScore = config ? truncate3(resolveSilhouetteScore(config)) : null;
+    renderStarGraph(config?.weights || null, targetId, silhouetteScore);
   });
 }
 
 function buildScales(points, width, height) {
   const timesteps = points.map((point) => point.timestep);
-  const minRateo = d3.min(points, (point) => point.rateo) ?? 0;
-  const maxRateo = d3.max(points, (point) => point.rateo) ?? 1;
-  const yMin = Number.isFinite(minRateo) ? minRateo : 0;
-  const yMax = Number.isFinite(maxRateo) ? maxRateo : 1;
+  const minSilhouette = d3.min(points, (point) => point.silhouetteScore) ?? 0;
+  const maxSilhouette = d3.max(points, (point) => point.silhouetteScore) ?? 0;
+  const needsPadding = Math.abs(maxSilhouette - minSilhouette) < MIN_SILHOUETTE_SPAN;
+  const yMin = needsPadding ? minSilhouette - MIN_SILHOUETTE_SPAN : minSilhouette;
+  const yMax = needsPadding ? maxSilhouette + MIN_SILHOUETTE_SPAN : maxSilhouette;
 
   return {
     timesteps,
@@ -116,7 +181,7 @@ function renderAxisLabels(svg, width, height) {
     .attr("text-anchor", "middle")
     .attr("font-size", 11)
     .attr("fill", "#425466")
-    .text("timestep");
+    .text("history");
 
   svg
     .append("text")
@@ -126,14 +191,14 @@ function renderAxisLabels(svg, width, height) {
     .attr("font-size", 11)
     .attr("fill", "#425466")
     .attr("transform", `rotate(-90 14 ${height / 2})`)
-    .text("rateo");
+    .text("silhouette");
 }
 
-function renderRateoLine(svg, points, xScale, yScale) {
+function renderSilhouetteLine(svg, points, xScale, yScale) {
   const line = d3
     .line()
     .x((point) => xScale(point.timestep))
-    .y((point) => yScale(point.rateo));
+    .y((point) => yScale(point.silhouetteScore));
 
   svg
     .append("path")
@@ -176,7 +241,7 @@ function handlePointSelection(point, pointGroup) {
   setLineSelection(point);
   if (targetId) {
     assignConfigurationToStar(targetId, point);
-    renderStarGraph(point.weights, targetId, point.rateo);
+    renderStarGraph(point.weights, targetId, point.silhouetteScore);
   }
 
   applyPointStyles(pointGroup);
@@ -189,7 +254,7 @@ function renderPoints(svg, points, xScale, yScale) {
     .data(points)
     .join("circle")
     .attr("cx", (point) => xScale(point.timestep))
-    .attr("cy", (point) => yScale(point.rateo))
+    .attr("cy", (point) => yScale(point.silhouetteScore))
     .style("cursor", "pointer")
     .on("click", (_, point) => handlePointSelection(point, pointGroup));
 
@@ -224,7 +289,7 @@ function bindDeleteButton() {
   deleteBtn.addEventListener("click", async () => {
     try {
       await deleteSelectedConfiguration();
-      await renderRateoChart();
+      await renderSilhouetteChart();
     } catch (error) {
       console.error("Delete failed", error);
     }
@@ -234,20 +299,20 @@ function bindDeleteButton() {
 }
 
 function bindResizeObserver(container) {
-  if (container._rateoResizeObserver) {
+  if (container._silhouetteResizeObserver) {
     return;
   }
 
   const resizeTarget = container.parentElement || container;
   const observer = new ResizeObserver(() => {
-    renderRateoChart();
+    renderSilhouetteChart();
   });
 
   observer.observe(resizeTarget);
-  container._rateoResizeObserver = observer;
+  container._silhouetteResizeObserver = observer;
 }
 
-function renderRateoSvg(container, points) {
+function renderSilhouetteSvg(container, points) {
   const parentWidth = container.parentElement?.clientWidth || container.clientWidth || 900;
   const width = Math.max(parentWidth - 20, points.length * 54 + MARGIN.left + MARGIN.right);
   const height = container.clientHeight || HEIGHT;
@@ -257,12 +322,12 @@ function renderRateoSvg(container, points) {
 
   renderAxes(svg, xScale, yScale, timesteps, width, height);
   renderAxisLabels(svg, width, height);
-  renderRateoLine(svg, points, xScale, yScale);
+  renderSilhouetteLine(svg, points, xScale, yScale);
   renderPoints(svg, points, xScale, yScale);
 }
 
-export async function renderRateoChart() {
-  const container = document.getElementById("rateo-chart");
+export async function renderSilhouetteChart() {
+  const container = document.getElementById("silhouette-chart");
   if (!container) {
     return;
   }
@@ -280,7 +345,7 @@ export async function renderRateoChart() {
       return;
     }
 
-    renderRateoSvg(container, points);
+    renderSilhouetteSvg(container, points);
     refreshStarGraphs();
     bindDeleteButton();
     bindResizeObserver(container);

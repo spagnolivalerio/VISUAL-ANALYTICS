@@ -3,7 +3,7 @@ import { getCurrentContext } from "./app-context";
 import { assignConfigurationToStar, getStarTarget } from "./config-selection";
 import { getNextTimestep, saveConfiguration } from "./config-store";
 import { configureCentroidToggle, configureLegendToggle, createSelectionState, renderMdsPlot } from "./mds-shared";
-import { renderRateoChart } from "./rateo-chart";
+import { renderSilhouetteChart } from "./silhouette-chart";
 import { renderStarGraph } from "./star-graph";
 import { getWeightsFromPanel } from "./weights-panel";
 
@@ -16,11 +16,13 @@ async function loadNonPropPoints(weights, dataset, clusterAttr) {
 
   return {
     points: payload.points || [],
-    ratio: Number.isFinite(Number(payload.ratio)) ? Number(payload.ratio) : 0,
+    silhouetteScore: Number.isFinite(Number(payload.silhouette_score))
+      ? Number(payload.silhouette_score)
+      : 0,
   };
 }
 
-async function persistConfiguration(points, ratioValue, weights, dataset, clusterAttr) {
+async function persistConfiguration(points, silhouetteScore, weights, dataset, clusterAttr) {
   const context = getCurrentContext();
   const resolvedDataset = dataset ?? context.dataset;
   const resolvedClusterAttr = clusterAttr ?? context.clusterAttr;
@@ -34,7 +36,7 @@ async function persistConfiguration(points, ratioValue, weights, dataset, cluste
     dataset: resolvedDataset,
     clusterAttr: resolvedClusterAttr,
     weights,
-    rateo: ratioValue,
+    silhouetteScore,
     points,
     attributes: Object.keys(weights),
   });
@@ -144,7 +146,7 @@ export function initNonPropMds() {
     status.textContent = "Computing...";
 
     try {
-      const { points, ratio } = await loadNonPropPoints(weights, dataset, clusterAttr);
+      const { points, silhouetteScore } = await loadNonPropPoints(weights, dataset, clusterAttr);
       if (!points.length) {
         throw new Error("No points returned.");
       }
@@ -154,16 +156,22 @@ export function initNonPropMds() {
 
       const targetId = getStarTarget();
       try {
-        const { savedConfig, timestep } = await persistConfiguration(points, ratio, weights, dataset, clusterAttr);
+        const { savedConfig, timestep } = await persistConfiguration(
+          points,
+          silhouetteScore,
+          weights,
+          dataset,
+          clusterAttr
+        );
         status.textContent = `Configuration saved (t=${timestep}).`;
         if (timestepLabel) {
           timestepLabel.textContent = `(t=${timestep})`;
         }
         if (targetId) {
           assignConfigurationToStar(targetId, savedConfig);
-          renderStarGraph(weights, targetId, ratio);
+          renderStarGraph(weights, targetId, silhouetteScore);
         }
-        renderRateoChart();
+        renderSilhouetteChart();
       } catch (error) {
         status.textContent = `Save failed: ${error.message}`;
       }

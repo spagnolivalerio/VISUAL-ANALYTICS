@@ -6,6 +6,7 @@ from flask import Flask, jsonify, request
 from scipy.optimize import linear_sum_assignment
 from sklearn.cluster import KMeans
 from sklearn.manifold import MDS
+from sklearn.metrics import silhouette_score as sklearn_silhouette_score
 from sklearn.preprocessing import StandardScaler
 
 DEFAULT_CLUSTER_ATTR = "Class label"
@@ -246,18 +247,17 @@ def compute_cluster_metrics(points, label_values):
     return cohesion, separation
 
 
-def compute_ratio(cohesion, separation):
-    cohesion_values = [float(value) for value in cohesion.values() if value is not None]
-    separation_values = [float(value) for value in separation.values() if value is not None]
-    if not cohesion_values or not separation_values:
+def compute_silhouette_score(points):
+    if len(points) < 2:
         return 0.0
 
-    mean_cohesion = float(np.mean(cohesion_values))
-    mean_separation = float(np.mean(separation_values))
-    if mean_separation == 0:
+    labels = [point["class_label"] for point in points]
+    unique_labels = set(labels)
+    if len(unique_labels) < 2 or len(unique_labels) >= len(points):
         return 0.0
 
-    return mean_cohesion / mean_separation
+    coordinates = np.array([[point["x"], point["y"]] for point in points], dtype=float)
+    return float(sklearn_silhouette_score(coordinates, labels))
 
 
 def parse_weights(weights_payload, attributes):
@@ -312,7 +312,7 @@ def build_mds_response(mds, cluster_attr, points, cohesion, separation, extra_fi
         "cluster_attr": cluster_attr,
         "cluster_cohesion": cohesion,
         "cluster_separation": separation,
-        "ratio": compute_ratio(cohesion, separation),
+        "silhouette_score": compute_silhouette_score(points),
         "points": points,
     }
     if extra_fields:

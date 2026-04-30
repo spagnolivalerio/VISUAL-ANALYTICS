@@ -44,7 +44,15 @@ export function getCurrentSessionId() {
   return "session-storage";
 }
 
-export async function saveConfiguration({ timestep, dataset, clusterAttr, weights, rateo, points, attributes }) {
+export async function saveConfiguration({
+  timestep,
+  dataset,
+  clusterAttr,
+  weights,
+  silhouetteScore,
+  points,
+  attributes,
+}) {
   const items = readStore();
   const context = normalizeContext(dataset, clusterAttr);
   const record = {
@@ -54,7 +62,7 @@ export async function saveConfiguration({ timestep, dataset, clusterAttr, weight
     clusterAttr: context.clusterAttr,
     weights: weights || {},
     attributes: Array.isArray(attributes) ? [...attributes] : Object.keys(weights || {}),
-    rateo,
+    silhouetteScore,
     points: Array.isArray(points) ? points : [],
   };
 

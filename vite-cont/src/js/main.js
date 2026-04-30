@@ -2,7 +2,7 @@ import { getCurrentContext } from "./app-context";
 import { initConfigurationSync } from "./configuration-sync";
 import { initKMeansView, resetKMeansView } from "./kmeans-view";
 import { initNonPropMds, resetNonPropMds } from "./mds-nonprop";
-import { renderRateoChart } from "./rateo-chart";
+import { renderSilhouetteChart } from "./silhouette-chart";
 import { initSidebar } from "./sidebar";
 import { setupStarSelection } from "./star-selection";
 import { renderWeightsPanel } from "./weights-panel";
@@ -95,11 +95,11 @@ export async function refreshDashboard() {
   if (!dataset) {
     setTopBarStatus("No dataset available.");
     await renderWeightsPanel(null, null, null);
-    await renderRateoChart();
+    await renderSilhouetteChart();
     return;
   }
 
-  await Promise.all([renderWeightsPanel(null, dataset, clusterAttr), renderRateoChart()]);
+  await Promise.all([renderWeightsPanel(null, dataset, clusterAttr), renderSilhouetteChart()]);
 
   updateTopBarContext();
 }
