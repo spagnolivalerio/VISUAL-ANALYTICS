@@ -247,16 +247,15 @@ def compute_cluster_metrics(points, label_values):
     return cohesion, separation
 
 
-def compute_silhouette_score(points):
-    if len(points) < 2:
+def compute_silhouette_score(coordinates, labels):
+    coordinates = np.asarray(coordinates, dtype=float)
+    if coordinates.ndim != 2 or coordinates.shape[0] < 2:
         return 0.0
 
-    labels = [point["class_label"] for point in points]
     unique_labels = set(labels)
-    if len(unique_labels) < 2 or len(unique_labels) >= len(points):
+    if len(unique_labels) < 2 or len(unique_labels) >= coordinates.shape[0]:
         return 0.0
 
-    coordinates = np.array([[point["x"], point["y"]] for point in points], dtype=float)
     return float(sklearn_silhouette_score(coordinates, labels))
 
 
@@ -309,14 +308,22 @@ def apply_feature_weights(scaled_features, weights):
     return scaled_features * np.sqrt(weights)
 
 
-def build_mds_response(mds, cluster_attr, points, cohesion, separation, extra_fields=None):
+def build_mds_response(
+    mds,
+    cluster_attr,
+    points,
+    cohesion,
+    separation,
+    silhouette_score,
+    extra_fields=None,
+):
     payload = {
         "count": len(points),
         "stress": float(mds.stress_),
         "cluster_attr": cluster_attr,
         "cluster_cohesion": cohesion,
         "cluster_separation": separation,
-        "silhouette_score": compute_silhouette_score(points),
+        "silhouette_score": float(silhouette_score),
         "points": points,
     }
     if extra_fields:
@@ -410,15 +417,24 @@ def compute_kmeans_label_alignment(kmeans_labels, cluster_labels, source_labels)
     }
 
 
-def build_projection_response(mds, cluster_attr, embedding, label_values, extra_fields=None):
+def build_projection_response(
+    mds,
+    cluster_attr,
+    embedding,
+    label_values,
+    silhouette_coordinates,
+    extra_fields=None,
+):
     points = build_points(embedding, label_values)
     cohesion, separation = compute_cluster_metrics(points, label_values)
+    silhouette_score = compute_silhouette_score(silhouette_coordinates, label_values)
     return build_mds_response(
         mds,
         cluster_attr,
         points,
         cohesion,
         separation,
+        silhouette_score,
         extra_fields,
     )
 
@@ -486,6 +502,7 @@ def mds_nonprop():
 
     scaled = scale_features(numeric_features.to_numpy())
     mds, embedding = project_weighted_mds(scaled, weights)
+    weighted_features = apply_feature_weights(scaled, weights)
 
     return jsonify(
         build_projection_response(
@@ -493,6 +510,7 @@ def mds_nonprop():
             cluster_attr,
             embedding,
             df[cluster_attr].tolist(),
+            weighted_features,
         )
     ), 200
 
@@ -544,6 +562,7 @@ def kmeans():
     ]
     points = build_points_with_color_labels(embedding, label_values, color_label_values)
     cohesion, separation = compute_cluster_metrics(points, label_values)
+    silhouette_score = compute_silhouette_score(clustering_features, label_values)
 
     return jsonify(
         build_mds_response(
@@ -552,6 +571,7 @@ def kmeans():
             points,
             cohesion,
             separation,
+            silhouette_score,
             {
                 "k": k_value,
                 "legend_labels": legend_labels,

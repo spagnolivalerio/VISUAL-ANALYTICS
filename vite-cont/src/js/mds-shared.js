@@ -24,12 +24,24 @@ function getSharedPointSelection() {
   return Number.isInteger(window.__mdsSharedPointSelection) ? window.__mdsSharedPointSelection : null;
 }
 
+function getSharedCentroidSelection() {
+  return window.__mdsSharedCentroidSelection || null;
+}
+
 function setSharedPointSelection(pointId) {
   window.__mdsSharedPointSelection = Number.isInteger(pointId) ? pointId : null;
 }
 
+function setSharedCentroidSelection(selection) {
+  window.__mdsSharedCentroidSelection = selection || null;
+}
+
 function clearSharedPointSelection() {
   window.__mdsSharedPointSelection = null;
+}
+
+function clearSharedCentroidSelection() {
+  window.__mdsSharedCentroidSelection = null;
 }
 
 function getContainerSize(container) {
@@ -256,7 +268,7 @@ function createSelectionController(points, clusters, centroids, circles, centroi
     const cluster = clusters.get(label) || [];
     const centroid = centroids.find((c) => c.label === label);
     if (!centroid) {
-      return;
+      return false;
     }
     resetHighlight();
     circles.attr("opacity", DIMMED_POINT_OPACITY);
@@ -265,6 +277,30 @@ function createSelectionController(points, clusters, centroids, circles, centroi
     centroidCircles.filter((c) => c.label === label).attr("opacity", ACTIVE_CENTROID_OPACITY);
     drawClusterLinks(linksLayer, cluster, centroid, x, y);
     currentSelection = { type: "centroid", key: label };
+    return true;
+  }
+
+  function resolveRelatedCentroid(selection) {
+    if (!selection) {
+      return null;
+    }
+
+    return (
+      centroids.find((centroid) => centroid.label === selection.label) ||
+      centroids.find((centroid) => centroid.label === selection.colorLabel) ||
+      centroids.find((centroid) => centroid.colorLabel === selection.colorLabel) ||
+      centroids.find((centroid) => centroid.colorLabel === selection.label) ||
+      null
+    );
+  }
+
+  function highlightRelatedCluster(selection) {
+    const centroid = resolveRelatedCentroid(selection);
+    if (!centroid || !highlightCluster(centroid.label)) {
+      return null;
+    }
+
+    return centroid.label;
   }
 
   function highlightPoint(pointId) {
@@ -297,6 +333,7 @@ function createSelectionController(points, clusters, centroids, circles, centroi
     getCurrentSelection: () => currentSelection,
     resetHighlight,
     highlightCluster,
+    highlightRelatedCluster,
     highlightPoint,
   };
 }
@@ -306,6 +343,7 @@ function bindSelectionEvents(svg, circles, centroidCircles, selectionController,
     selectionController.resetHighlight();
     selectionState?.clear?.();
     clearSharedPointSelection();
+    clearSharedCentroidSelection();
     window.dispatchEvent(new CustomEvent("mds:reset"));
   };
 
@@ -317,12 +355,16 @@ function bindSelectionEvents(svg, circles, centroidCircles, selectionController,
       return;
     }
     clearSharedPointSelection();
+    clearSharedCentroidSelection();
     window.dispatchEvent(new CustomEvent("mds:reset"));
     if (currentSelection?.type === "point") {
       selectionController.resetHighlight();
     }
     selectionController.highlightCluster(d.label);
     selectionState?.set?.({ type: "centroid", key: d.label });
+    const detail = { label: d.label, colorLabel: d.colorLabel };
+    setSharedCentroidSelection(detail);
+    window.dispatchEvent(new CustomEvent("mds:centroid", { detail }));
   });
 
   svg.on("click", resetSelection);
@@ -337,6 +379,7 @@ function bindSelectionEvents(svg, circles, centroidCircles, selectionController,
     if (currentSelection?.type === "centroid") {
       selectionController.resetHighlight();
     }
+    clearSharedCentroidSelection();
     selectionController.highlightPoint(d.id);
     selectionState?.set?.({ type: "point", key: d.id });
     setSharedPointSelection(d.id);
@@ -346,17 +389,28 @@ function bindSelectionEvents(svg, circles, centroidCircles, selectionController,
 
 function bindGlobalSelectionSync(container, selectionController, selectionState) {
   const handlers = {
+    centroid: (event) => {
+      const currentSelection = selectionController.getCurrentSelection();
+      if (currentSelection?.type === "point") selectionController.resetHighlight();
+      const localLabel = selectionController.highlightRelatedCluster(event.detail);
+      if (localLabel) {
+        setSharedCentroidSelection(event.detail);
+        selectionState?.set?.({ type: "centroid", key: localLabel });
+      }
+    },
     point: (event) => {
       const currentSelection = selectionController.getCurrentSelection();
       if (currentSelection?.type === "centroid") selectionController.resetHighlight();
       if (currentSelection?.type !== "point" || currentSelection.key !== event.detail.id) {
         selectionController.highlightPoint(event.detail.id);
       }
+      clearSharedCentroidSelection();
       setSharedPointSelection(event.detail.id);
       selectionState?.set?.({ type: "point", key: event.detail.id });
     },
     reset: () => {
       clearSharedPointSelection();
+      clearSharedCentroidSelection();
       selectionController.resetHighlight();
       selectionState?.clear?.();
     },
@@ -364,6 +418,7 @@ function bindGlobalSelectionSync(container, selectionController, selectionState)
 
   [
     ["mds:reset", "_mdsResetHandler", handlers.reset],
+    ["mds:centroid", "_mdsCentroidHandler", handlers.centroid],
     ["mds:point", "_mdsPointHandler", handlers.point],
   ].forEach(([eventName, key, handler]) => {
     if (container[key]) {
@@ -377,6 +432,7 @@ function bindGlobalSelectionSync(container, selectionController, selectionState)
 function restoreSelection(points, clusters, selectionState, selectionController) {
   const savedSelection = selectionState?.get?.();
   const sharedPointSelection = getSharedPointSelection();
+  const sharedCentroidSelection = getSharedCentroidSelection();
   const valid =
     savedSelection?.type === "centroid"
       ? clusters.has(savedSelection.key)
@@ -388,6 +444,11 @@ function restoreSelection(points, clusters, selectionState, selectionController)
     if (sharedPointSelection !== null && points.some((point) => point.id === sharedPointSelection)) {
       selectionState?.set?.({ type: "point", key: sharedPointSelection });
       selectionController.highlightPoint(sharedPointSelection);
+      return;
+    }
+    const localLabel = selectionController.highlightRelatedCluster(sharedCentroidSelection);
+    if (localLabel) {
+      selectionState?.set?.({ type: "centroid", key: localLabel });
     }
     return;
   }
@@ -397,6 +458,11 @@ function restoreSelection(points, clusters, selectionState, selectionController)
     if (sharedPointSelection !== null && points.some((point) => point.id === sharedPointSelection)) {
       selectionState?.set?.({ type: "point", key: sharedPointSelection });
       selectionController.highlightPoint(sharedPointSelection);
+      return;
+    }
+    const localLabel = selectionController.highlightRelatedCluster(sharedCentroidSelection);
+    if (localLabel) {
+      selectionState?.set?.({ type: "centroid", key: localLabel });
     }
     return;
   }
