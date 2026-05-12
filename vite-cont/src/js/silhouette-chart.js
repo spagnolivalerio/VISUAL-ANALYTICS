@@ -33,6 +33,10 @@ const HIGHLIGHTED_POINT_OPACITY = 1;
 const STAR_GRAPH_IDS = ["star-graph-1", "star-graph-2"];
 const MIN_SILHOUETTE_SPAN = 0.001;
 const PREVIEW_POINT_ID = "__continuous_preview__";
+const DEFAULT_ANIMATION_FRAME_DURATION = 44;
+
+let lastRenderedPoints = [];
+let chartRenderVersion = 0;
 
 function truncate3(value) {
   const numericValue = Number(value);
@@ -197,6 +201,60 @@ function buildScales(points, width, height) {
   };
 }
 
+function cloneChartPoints(points) {
+  return points.map((point) => ({ ...point }));
+}
+
+function getPointKey(point) {
+  return String(point.id);
+}
+
+function canAnimateSilhouetteTransition(fromPoints, toPoints) {
+  if (!fromPoints.length || fromPoints.length !== toPoints.length) {
+    return false;
+  }
+
+  const fromPointById = new Map(fromPoints.map((point) => [getPointKey(point), point]));
+  return toPoints.every((point) => {
+    const previousPoint = fromPointById.get(getPointKey(point));
+    return previousPoint && Number(previousPoint.timestep) === Number(point.timestep);
+  });
+}
+
+function interpolateSilhouettePoints(fromPoints, toPoints, ratio) {
+  const fromPointById = new Map(fromPoints.map((point) => [getPointKey(point), point]));
+  return toPoints.map((toPoint) => {
+    const fromPoint = fromPointById.get(getPointKey(toPoint));
+    const fromScore = Number(fromPoint?.silhouetteScore ?? toPoint.silhouetteScore);
+    const toScore = Number(toPoint.silhouetteScore);
+    return {
+      ...toPoint,
+      silhouetteScore: fromScore + (toScore - fromScore) * ratio,
+    };
+  });
+}
+
+function interpolateDomainRange(fromRange, toRange, ratio) {
+  return [
+    fromRange[0] + (toRange[0] - fromRange[0]) * ratio,
+    fromRange[1] + (toRange[1] - fromRange[1]) * ratio,
+  ];
+}
+
+function buildYScaleFromDomain(domain, height) {
+  return d3
+    .scaleLinear()
+    .domain(domain)
+    .range([height - MARGIN.bottom, MARGIN.top]);
+}
+
+function buildInterpolatedYScale(fromYScale, toYScale, height, ratio) {
+  return buildYScaleFromDomain(
+    interpolateDomainRange(fromYScale.domain(), toYScale.domain(), ratio),
+    height
+  );
+}
+
 function createSvg(container, width, height) {
   container.innerHTML = "";
 
@@ -214,23 +272,27 @@ function styleAxis(group) {
   group.selectAll("path").attr("stroke", "#6b7a90");
 }
 
+function buildYAxis(yScale) {
+  return d3.axisLeft(yScale).ticks(4).tickFormat((value) => truncate3(Number(value)).toFixed(3));
+}
+
 function renderAxes(svg, xScale, yScale, timesteps, width, height) {
   const xAxis = d3.axisBottom(xScale).tickValues(timesteps);
-  const yAxis = d3.axisLeft(yScale).ticks(4).tickFormat((value) => truncate3(Number(value)).toFixed(3));
+  const yAxis = buildYAxis(yScale);
 
-  styleAxis(
-    svg
-      .append("g")
-      .attr("transform", `translate(0,${height - MARGIN.bottom})`)
-      .call(xAxis)
-  );
+  const xAxisGroup = svg
+    .append("g")
+    .attr("transform", `translate(0,${height - MARGIN.bottom})`)
+    .call(xAxis);
 
-  styleAxis(
-    svg
-      .append("g")
-      .attr("transform", `translate(${MARGIN.left},0)`)
-      .call(yAxis)
-  );
+  const yAxisGroup = svg
+    .append("g")
+    .attr("transform", `translate(${MARGIN.left},0)`)
+    .call(yAxis);
+
+  styleAxis(xAxisGroup);
+  styleAxis(yAxisGroup);
+  return { xAxisGroup, yAxisGroup };
 }
 
 function renderAxisLabels(svg, width, height) {
@@ -254,16 +316,18 @@ function renderAxisLabels(svg, width, height) {
     .text("silhouette");
 }
 
-function renderSilhouetteLine(svg, points, xScale, yScale) {
-  const line = d3
+function buildSilhouetteLine(points, xScale, yScale) {
+  return d3
     .line()
     .x((point) => xScale(point.timestep))
-    .y((point) => yScale(point.silhouetteScore));
+    .y((point) => yScale(point.silhouetteScore))(points);
+}
 
-  svg
+function renderSilhouetteLine(svg, points, xScale, yScale) {
+  return svg
     .append("path")
     .datum(points)
-    .attr("d", line)
+    .attr("d", buildSilhouetteLine(points, xScale, yScale))
     .attr("fill", "none")
     .attr("stroke", "#1f6feb")
     .attr("stroke-width", 2);
@@ -377,7 +441,7 @@ function renderPoints(svg, points, xScale, yScale) {
     });
 
   applyPointStyles(pointGroup, ringGroup);
-  return pointGroup;
+  return { pointGroup, ringGroup };
 }
 
 async function deleteSelectedConfiguration() {
@@ -430,10 +494,15 @@ function bindResizeObserver(container) {
   container._silhouetteResizeObserver = observer;
 }
 
-function renderSilhouetteSvg(container, points) {
+function getChartDimensions(container, points) {
   const parentWidth = container.parentElement?.clientWidth || container.clientWidth || 900;
   const width = Math.max(parentWidth - 20, points.length * 54 + MARGIN.left + MARGIN.right);
   const height = container.clientHeight || HEIGHT;
+  return { width, height };
+}
+
+function renderSilhouetteSvg(container, points) {
+  const { width, height } = getChartDimensions(container, points);
   container.style.width = `${width}px`;
   const { timesteps, xScale, yScale } = buildScales(points, width, height);
   const svg = createSvg(container, width, height);
@@ -444,12 +513,100 @@ function renderSilhouetteSvg(container, points) {
   renderPoints(svg, points, xScale, yScale);
 }
 
-export async function renderSilhouetteChart() {
-  const container = document.getElementById("silhouette-chart");
-  if (!container) {
-    return;
+async function animateSilhouetteSvg(
+  container,
+  fromPoints,
+  toPoints,
+  {
+    interpolationSteps = 4,
+    frameDuration = DEFAULT_ANIMATION_FRAME_DURATION,
+    shouldContinue = null,
+  } = {}
+) {
+  const { width, height } = getChartDimensions(container, toPoints);
+  container.style.width = `${width}px`;
+
+  const fromScales = buildScales(fromPoints, width, height);
+  const toScales = buildScales(toPoints, width, height);
+  const initialPoints = interpolateSilhouettePoints(fromPoints, toPoints, 0);
+  const initialYScale = buildInterpolatedYScale(fromScales.yScale, toScales.yScale, height, 0);
+  const svg = createSvg(container, width, height);
+  const { yAxisGroup } = renderAxes(
+    svg,
+    toScales.xScale,
+    initialYScale,
+    toScales.timesteps,
+    width,
+    height
+  );
+  renderAxisLabels(svg, width, height);
+  const linePath = renderSilhouetteLine(svg, initialPoints, toScales.xScale, initialYScale);
+  let { pointGroup, ringGroup } = renderPoints(svg, initialPoints, toScales.xScale, initialYScale);
+  const stepCount = Math.max(1, Number(interpolationSteps) || 1);
+
+  for (let stepIndex = 1; stepIndex <= stepCount; stepIndex += 1) {
+    if (typeof shouldContinue === "function" && !shouldContinue()) {
+      return false;
+    }
+
+    const ratio = stepIndex / stepCount;
+    const framePoints = interpolateSilhouettePoints(fromPoints, toPoints, ratio);
+    const frameYScale = buildInterpolatedYScale(fromScales.yScale, toScales.yScale, height, ratio);
+    pointGroup = pointGroup.data(framePoints, getPointKey);
+    ringGroup = ringGroup.data(framePoints, getPointKey);
+    applyPointStyles(pointGroup, ringGroup);
+
+    try {
+      const yAxisTransition = yAxisGroup.transition().duration(frameDuration).ease(d3.easeLinear);
+      yAxisTransition.call(buildYAxis(frameYScale));
+
+      await Promise.all([
+        linePath
+          .datum(framePoints)
+          .transition()
+          .duration(frameDuration)
+          .ease(d3.easeLinear)
+          .attr("d", buildSilhouetteLine(framePoints, toScales.xScale, frameYScale))
+          .end(),
+        pointGroup
+          .transition()
+          .duration(frameDuration)
+          .ease(d3.easeLinear)
+          .attr("cy", (point) => frameYScale(point.silhouetteScore))
+          .end(),
+        ringGroup
+          .transition()
+          .duration(frameDuration)
+          .ease(d3.easeLinear)
+          .attr("cy", (point) => frameYScale(point.silhouetteScore))
+          .end(),
+        yAxisTransition.end(),
+      ]);
+      styleAxis(yAxisGroup);
+    } catch (error) {
+      return false;
+    }
   }
 
+  return true;
+}
+
+export async function renderSilhouetteChart(options = {}) {
+  const container = document.getElementById("silhouette-chart");
+  if (!container) {
+    return false;
+  }
+
+  const {
+    animate = false,
+    interpolationSteps = 4,
+    frameDuration = DEFAULT_ANIMATION_FRAME_DURATION,
+    shouldContinue = null,
+  } = options || {};
+  const renderVersion = ++chartRenderVersion;
+  const canContinue = () =>
+    renderVersion === chartRenderVersion &&
+    (typeof shouldContinue !== "function" || shouldContinue());
   const context = getCurrentContext();
   const view = getActiveSilhouetteView();
   bindViewSelector();
@@ -463,16 +620,40 @@ export async function renderSilhouetteChart() {
     if (!points.length) {
       container.style.width = "100%";
       container.textContent = "No configurations saved yet.";
+      lastRenderedPoints = [];
       refreshStarGraphs();
-      return;
+      return true;
     }
 
-    renderSilhouetteSvg(container, points);
+    const shouldAnimate =
+      animate &&
+      isContinuousViewEnabled() &&
+      canAnimateSilhouetteTransition(lastRenderedPoints, points);
+
+    if (shouldAnimate && canContinue()) {
+      const animated = await animateSilhouetteSvg(container, lastRenderedPoints, points, {
+        interpolationSteps,
+        frameDuration,
+        shouldContinue: canContinue,
+      });
+      if (!animated) {
+        if (!canContinue()) {
+          return false;
+        }
+        renderSilhouetteSvg(container, points);
+      }
+    } else {
+      renderSilhouetteSvg(container, points);
+    }
+
+    lastRenderedPoints = cloneChartPoints(points);
     refreshStarGraphs();
     bindDeleteButton();
     bindResizeObserver(container);
+    return true;
   } catch (error) {
     container.style.width = "100%";
     container.textContent = `Unable to load configurations: ${error.message}`;
+    return false;
   }
 }

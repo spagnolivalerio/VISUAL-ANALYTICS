@@ -199,11 +199,16 @@ function buildClusterData(points) {
   const centroids = Array.from(clusters, ([label, items]) => ({
     label,
     colorLabel: getPointColorLabel(items[0]),
+    selectionKey: getPointColorLabel(items[0]),
     x: d3.mean(items, (d) => d.x),
     y: d3.mean(items, (d) => d.y),
   }));
 
   return { clusters, centroids };
+}
+
+function getCentroidSelectionKey(centroid) {
+  return centroid?.selectionKey ?? centroid?.colorLabel ?? centroid?.label ?? null;
 }
 
 function renderPoints(pointsLayer, points, x, y, color) {
@@ -322,6 +327,154 @@ function drawPointLink(linksLayer, selected, centroid, x, y) {
     .attr("opacity", 0.7);
 }
 
+function getSelectionFromState(selectionState) {
+  const savedSelection = selectionState?.get?.();
+  if (savedSelection) {
+    return savedSelection;
+  }
+
+  const sharedPointSelection = getSharedPointSelection();
+  if (sharedPointSelection !== null) {
+    return { type: "point", key: sharedPointSelection };
+  }
+
+  const sharedCentroidSelection = getSharedCentroidSelection();
+  if (sharedCentroidSelection) {
+    return {
+      type: "centroid",
+      key:
+        sharedCentroidSelection.selectionKey ??
+        sharedCentroidSelection.colorLabel ??
+        sharedCentroidSelection.label,
+    };
+  }
+
+  return null;
+}
+
+function resolveFrameSelection(points, centroids, selectionState) {
+  const selection = getSelectionFromState(selectionState);
+  if (!selection) {
+    return null;
+  }
+
+  if (selection.type === "point") {
+    const selectedPoint = points.find((point) => point.id === selection.key);
+    const centroid = selectedPoint
+      ? centroids.find((item) => item.label === selectedPoint.class_label)
+      : null;
+
+    if (!selectedPoint || !centroid) {
+      return null;
+    }
+
+    return {
+      type: "point",
+      centroid,
+      selectedPoint,
+      clusterPoints: points.filter((point) => point.class_label === selectedPoint.class_label),
+    };
+  }
+
+  if (selection.type === "centroid") {
+    const selectionKey =
+      selection.selectionKey ?? selection.key ?? selection.colorLabel ?? selection.label ?? null;
+    const centroid = centroids.find((item) => getCentroidSelectionKey(item) === selectionKey);
+    if (!centroid) {
+      return null;
+    }
+
+    return {
+      type: "centroid",
+      centroid,
+      clusterPoints: points.filter((point) => point.class_label === centroid.label),
+    };
+  }
+
+  return null;
+}
+
+function applyAnimatedSelectionStyles(circles, centroidCircles, frameSelection) {
+  if (!frameSelection) {
+    return;
+  }
+
+  const selectedClusterLabel = frameSelection.centroid.label;
+  circles.attr("opacity", DIMMED_POINT_OPACITY).attr("r", POINT_RADIUS);
+  circles
+    .filter((point) => point.class_label === selectedClusterLabel)
+    .attr("opacity", ACTIVE_POINT_OPACITY);
+
+  if (frameSelection.type === "point") {
+    circles
+      .filter((point) => point.id === frameSelection.selectedPoint.id)
+      .attr("opacity", ACTIVE_CENTROID_OPACITY)
+      .attr("r", ACTIVE_POINT_RADIUS);
+  }
+
+  centroidCircles.attr("opacity", DIMMED_CENTROID_OPACITY);
+  centroidCircles
+    .filter((centroid) => centroid.label === selectedClusterLabel)
+    .attr("opacity", ACTIVE_CENTROID_OPACITY);
+}
+
+function renderSelectionLinks(
+  linksLayer,
+  frameSelection,
+  x,
+  y,
+  frameDuration = 0
+) {
+  if (!frameSelection) {
+    linksLayer.selectAll("line").remove();
+    return null;
+  }
+
+  const centroid = frameSelection.centroid;
+  const linkPoints =
+    frameSelection.type === "point" ? [frameSelection.selectedPoint] : frameSelection.clusterPoints;
+
+  const lines = linksLayer
+    .selectAll("line")
+    .data(linkPoints, (point) => point.id)
+    .join(
+      (enter) =>
+        enter
+          .append("line")
+          .attr("x1", x(centroid.x))
+          .attr("y1", y(centroid.y))
+          .attr("x2", (point) => x(point.x))
+          .attr("y2", (point) => y(point.y))
+          .attr("stroke", "#6b7a90")
+          .attr("stroke-width", 1)
+          .attr("opacity", frameSelection.type === "point" ? 0.7 : 0.6),
+      (update) => update,
+      (exit) => exit.remove()
+    );
+  lines
+    .attr("stroke", "#6b7a90")
+    .attr("stroke-width", 1)
+    .attr("opacity", frameSelection.type === "point" ? 0.7 : 0.6);
+
+  if (!frameDuration) {
+    lines
+      .attr("x1", x(centroid.x))
+      .attr("y1", y(centroid.y))
+      .attr("x2", (point) => x(point.x))
+      .attr("y2", (point) => y(point.y));
+    return null;
+  }
+
+  return lines
+    .transition()
+    .duration(frameDuration)
+    .ease(d3.easeLinear)
+    .attr("x1", x(centroid.x))
+    .attr("y1", y(centroid.y))
+    .attr("x2", (point) => x(point.x))
+    .attr("y2", (point) => y(point.y));
+}
+
 function createSelectionController(points, clusters, centroids, circles, centroidCircles, linksLayer, x, y) {
   let currentSelection = null;
   const resetHighlight = () => {
@@ -343,7 +496,11 @@ function createSelectionController(points, clusters, centroids, circles, centroi
     centroidCircles.attr("opacity", DIMMED_CENTROID_OPACITY);
     centroidCircles.filter((c) => c.label === label).attr("opacity", ACTIVE_CENTROID_OPACITY);
     drawClusterLinks(linksLayer, cluster, centroid, x, y);
-    currentSelection = { type: "centroid", key: label };
+    currentSelection = {
+      type: "centroid",
+      key: getCentroidSelectionKey(centroid),
+      label,
+    };
     return true;
   }
 
@@ -352,11 +509,18 @@ function createSelectionController(points, clusters, centroids, circles, centroi
       return null;
     }
 
+    const selectionKey = selection.selectionKey ?? selection.colorLabel ?? selection.label ?? null;
+    if (selectionKey !== null) {
+      const match = centroids.find(
+        (centroid) => getCentroidSelectionKey(centroid) === selectionKey
+      );
+      if (match) {
+        return match;
+      }
+    }
+
     return (
       centroids.find((centroid) => centroid.label === selection.label) ||
-      centroids.find((centroid) => centroid.label === selection.colorLabel) ||
-      centroids.find((centroid) => centroid.colorLabel === selection.colorLabel) ||
-      centroids.find((centroid) => centroid.colorLabel === selection.label) ||
       null
     );
   }
@@ -367,7 +531,7 @@ function createSelectionController(points, clusters, centroids, circles, centroi
       return null;
     }
 
-    return centroid.label;
+    return getCentroidSelectionKey(centroid);
   }
 
   function highlightPoint(pointId) {
@@ -417,7 +581,8 @@ function bindSelectionEvents(svg, circles, centroidCircles, selectionController,
   centroidCircles.on("click", (event, d) => {
     event.stopPropagation();
     const currentSelection = selectionController.getCurrentSelection();
-    if (currentSelection?.type === "centroid" && currentSelection.key === d.label) {
+    const selectionKey = getCentroidSelectionKey(d);
+    if (currentSelection?.type === "centroid" && currentSelection.key === selectionKey) {
       resetSelection();
       return;
     }
@@ -428,8 +593,8 @@ function bindSelectionEvents(svg, circles, centroidCircles, selectionController,
       selectionController.resetHighlight();
     }
     selectionController.highlightCluster(d.label);
-    selectionState?.set?.({ type: "centroid", key: d.label });
-    const detail = { label: d.label, colorLabel: d.colorLabel };
+    selectionState?.set?.({ type: "centroid", key: selectionKey });
+    const detail = { label: d.label, colorLabel: d.colorLabel, selectionKey };
     setSharedCentroidSelection(detail);
     window.dispatchEvent(new CustomEvent("mds:centroid", { detail }));
   });
@@ -459,10 +624,10 @@ function bindGlobalSelectionSync(container, selectionController, selectionState)
     centroid: (event) => {
       const currentSelection = selectionController.getCurrentSelection();
       if (currentSelection?.type === "point") selectionController.resetHighlight();
-      const localLabel = selectionController.highlightRelatedCluster(event.detail);
-      if (localLabel) {
+      const localSelectionKey = selectionController.highlightRelatedCluster(event.detail);
+      if (localSelectionKey !== null) {
         setSharedCentroidSelection(event.detail);
-        selectionState?.set?.({ type: "centroid", key: localLabel });
+        selectionState?.set?.({ type: "centroid", key: localSelectionKey });
       }
     },
     point: (event) => {
@@ -496,13 +661,13 @@ function bindGlobalSelectionSync(container, selectionController, selectionState)
   });
 }
 
-function restoreSelection(points, clusters, selectionState, selectionController) {
+function restoreSelection(points, clusters, centroids, selectionState, selectionController) {
   const savedSelection = selectionState?.get?.();
   const sharedPointSelection = getSharedPointSelection();
   const sharedCentroidSelection = getSharedCentroidSelection();
   const valid =
     savedSelection?.type === "centroid"
-      ? clusters.has(savedSelection.key)
+      ? centroids.some((centroid) => getCentroidSelectionKey(centroid) === savedSelection.key)
       : savedSelection?.type === "point"
         ? points.some((p) => p.id === savedSelection.key)
         : false;
@@ -513,9 +678,9 @@ function restoreSelection(points, clusters, selectionState, selectionController)
       selectionController.highlightPoint(sharedPointSelection);
       return;
     }
-    const localLabel = selectionController.highlightRelatedCluster(sharedCentroidSelection);
-    if (localLabel) {
-      selectionState?.set?.({ type: "centroid", key: localLabel });
+    const localSelectionKey = selectionController.highlightRelatedCluster(sharedCentroidSelection);
+    if (localSelectionKey !== null) {
+      selectionState?.set?.({ type: "centroid", key: localSelectionKey });
     }
     return;
   }
@@ -527,15 +692,15 @@ function restoreSelection(points, clusters, selectionState, selectionController)
       selectionController.highlightPoint(sharedPointSelection);
       return;
     }
-    const localLabel = selectionController.highlightRelatedCluster(sharedCentroidSelection);
-    if (localLabel) {
-      selectionState?.set?.({ type: "centroid", key: localLabel });
+    const localSelectionKey = selectionController.highlightRelatedCluster(sharedCentroidSelection);
+    if (localSelectionKey !== null) {
+      selectionState?.set?.({ type: "centroid", key: localSelectionKey });
     }
     return;
   }
 
   if (savedSelection.type === "centroid") {
-    selectionController.highlightCluster(savedSelection.key);
+    selectionController.highlightRelatedCluster({ selectionKey: savedSelection.key });
     return;
   }
 
@@ -625,7 +790,7 @@ export function renderMdsPlot({
 
   bindSelectionEvents(svg, circles, centroidCircles, selectionController, selectionState);
   bindGlobalSelectionSync(container, selectionController, selectionState);
-  restoreSelection(points, clusters, selectionState, selectionController);
+  restoreSelection(points, clusters, centroids, selectionState, selectionController);
 }
 
 function interpolatePoints(fromPoints, toPoints, ratio) {
@@ -655,6 +820,7 @@ export async function animateMdsPlotInterpolation({
   interpolationSteps = 4,
   frameDuration = DEFAULT_ANIMATION_FRAME_DURATION,
   shouldContinue = null,
+  selectionState = null,
 }) {
   if (!container || !Array.isArray(fromPoints) || !Array.isArray(toPoints) || !toPoints.length) {
     return false;
@@ -673,7 +839,7 @@ export async function animateMdsPlotInterpolation({
     useNice
   );
   const color = buildColorScale(toPoints, colorDomain);
-  const { pointsLayer, centroidLayer } = createLayers(g);
+  const { pointsLayer, centroidLayer, linksLayer } = createLayers(g);
   const resolvedLegendLabels =
     Array.isArray(legendLabels) && legendLabels.length ? legendLabels : color.domain();
 
@@ -712,6 +878,9 @@ export async function animateMdsPlotInterpolation({
     .attr("opacity", DEFAULT_CENTROID_OPACITY);
 
   applyCentroidVisibility(centroidLayer, showCentroids);
+  let frameSelection = resolveFrameSelection(initialPoints, initialCentroids, selectionState);
+  applyAnimatedSelectionStyles(circles, centroidCircles, frameSelection);
+  renderSelectionLinks(linksLayer, frameSelection, x, y);
 
   for (let stepIndex = 1; stepIndex <= stepCount; stepIndex += 1) {
     if (typeof shouldContinue === "function" && !shouldContinue()) {
@@ -753,6 +922,16 @@ export async function animateMdsPlotInterpolation({
       .attr("stroke-width", 1.5)
       .attr("opacity", DEFAULT_CENTROID_OPACITY);
 
+    frameSelection = resolveFrameSelection(framePoints, frameCentroids, selectionState);
+    applyAnimatedSelectionStyles(circles, centroidCircles, frameSelection);
+    const linkTransition = renderSelectionLinks(
+      linksLayer,
+      frameSelection,
+      frameScales.x,
+      frameScales.y,
+      frameDuration
+    );
+
     try {
       const xAxisTransition = xAxisGroup.transition().duration(frameDuration).ease(d3.easeLinear);
       xAxisTransition.call(d3.axisBottom(frameScales.x));
@@ -775,6 +954,7 @@ export async function animateMdsPlotInterpolation({
           .attr("cx", (centroid) => frameScales.x(centroid.x))
           .attr("cy", (centroid) => frameScales.y(centroid.y))
           .end(),
+        ...(linkTransition ? [linkTransition.end()] : []),
         xAxisTransition.end(),
         yAxisTransition.end(),
       ]);

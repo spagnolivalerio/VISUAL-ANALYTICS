@@ -14,7 +14,13 @@ import {
   setDisplayedConfiguration,
 } from "./config-selection";
 import { getNextTimestep, saveConfiguration } from "./config-store";
-import { buildKMeansLegendItems, loadKMeans, renderKMeansFromSaved, renderKMeansResult } from "./kmeans-view";
+import {
+  buildKMeansLegendItems,
+  kmeansSelectionState,
+  loadKMeans,
+  renderKMeansFromSaved,
+  renderKMeansResult,
+} from "./kmeans-view";
 import {
   animateMdsPlotInterpolation,
   computeMdsScaleDomain,
@@ -283,7 +289,7 @@ async function animateResolvedConfigurationTransition(
   );
   const shouldContinue = () => runVersion === previewRunVersion && isContinuousViewEnabled();
 
-  const [labelAnimated, kmeansAnimated] = await Promise.all([
+  const [labelAnimated, kmeansAnimated, silhouetteAnimated] = await Promise.all([
     animateMdsPlotInterpolation({
       container: labelContainer,
       fromPoints: fromConfiguration.views.labelBased.points,
@@ -298,6 +304,7 @@ async function animateResolvedConfigurationTransition(
       useNice: false,
       interpolationSteps,
       shouldContinue,
+      selectionState: nonPropSelectionState,
     }),
     animateMdsPlotInterpolation({
       container: kmeansContainer,
@@ -316,10 +323,16 @@ async function animateResolvedConfigurationTransition(
       legendItems: buildKMeansLegendItems(toConfiguration.views.kmeans),
       interpolationSteps,
       shouldContinue,
+      selectionState: kmeansSelectionState,
+    }),
+    renderSilhouetteChart({
+      animate: true,
+      interpolationSteps,
+      shouldContinue,
     }),
   ]);
 
-  return labelAnimated && kmeansAnimated && shouldContinue();
+  return labelAnimated && kmeansAnimated && silhouetteAnimated && shouldContinue();
 }
 
 function previewMatchesCurrentWeights(dataset, clusterAttr, weights) {
@@ -355,8 +368,10 @@ async function renderContinuousPreview(dataset, clusterAttr, weights) {
           ? resolveScaleDomainsForConfiguration(previousConfiguration)
           : null;
     setContinuousPreviewConfiguration(configuration);
+    setDisplayedConfiguration(null);
+    let transitionAnimated = false;
     if (previousConfiguration) {
-      await animateResolvedConfigurationTransition(
+      transitionAnimated = await animateResolvedConfigurationTransition(
         previousConfiguration,
         configuration,
         currentVersion,
@@ -368,9 +383,10 @@ async function renderContinuousPreview(dataset, clusterAttr, weights) {
       }
     }
     applyResolvedConfiguration(configuration, container, nextScaleDomains, false);
-    setDisplayedConfiguration(null);
     setStatus("Continuous preview updated.");
-    await renderSilhouetteChart();
+    if (!transitionAnimated) {
+      await renderSilhouetteChart();
+    }
     return configuration;
   } catch (error) {
     if (currentVersion === previewRunVersion && isContinuousViewEnabled()) {

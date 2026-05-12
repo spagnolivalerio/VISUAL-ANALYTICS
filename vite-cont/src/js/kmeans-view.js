@@ -6,7 +6,7 @@ let resizeObserver;
 let lastResult = null;
 let lastScaleDomain = null;
 let lastUseNice = true;
-const kmeansSelectionState = createSelectionState();
+export const kmeansSelectionState = createSelectionState();
 
 function getContainer() {
   return document.getElementById("kmeans-container");
