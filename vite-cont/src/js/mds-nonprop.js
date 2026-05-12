@@ -17,6 +17,7 @@ import { getNextTimestep, saveConfiguration } from "./config-store";
 import { buildKMeansLegendItems, loadKMeans, renderKMeansFromSaved, renderKMeansResult } from "./kmeans-view";
 import {
   animateMdsPlotInterpolation,
+  computeMdsScaleDomain,
   configureCentroidToggle,
   configureLegendToggle,
   createSelectionState,
@@ -32,7 +33,7 @@ const RUN_BUTTON_ID = "run-nonprop-btn";
 const STATUS_ID = "nonprop-status";
 const PREVIEW_DEBOUNCE_MS = 90;
 const WEIGHT_SLIDER_STEP = 0.25;
-const INTERPOLATION_SEGMENTS_PER_STEP = 8;
+const INTERPOLATION_SEGMENTS_PER_STEP = 4;
 const MAX_INTERPOLATION_STEPS = 16;
 
 let resizeObserver;
@@ -41,6 +42,11 @@ let lastResolvedConfiguration = null;
 let previewDebounceTimer = null;
 let previewRunVersion = 0;
 let weightsChangeListenerBound = false;
+let lastScaleDomains = {
+  labelBased: null,
+  kmeans: null,
+};
+let lastUseNice = true;
 const nonPropSelectionState = createSelectionState();
 
 function getContainer() {
@@ -68,6 +74,13 @@ function setStatus(message) {
   if (status) {
     status.textContent = message;
   }
+}
+
+function resolveScaleDomainsForConfiguration(configuration) {
+  return {
+    labelBased: computeMdsScaleDomain(configuration?.views?.labelBased?.points || []),
+    kmeans: computeMdsScaleDomain(configuration?.views?.kmeans?.points || []),
+  };
 }
 
 function buildWeightsSignature(weights, dataset, clusterAttr) {
@@ -194,13 +207,19 @@ function observeResize(container) {
 
   resizeObserver = new ResizeObserver(() => {
     if (lastPoints.length) {
-      drawNonPropMds(container, lastPoints, container.dataset.showCentroids === "true");
+      drawNonPropMds(
+        container,
+        lastPoints,
+        container.dataset.showCentroids === "true",
+        lastScaleDomains.labelBased,
+        lastUseNice
+      );
     }
   });
   resizeObserver.observe(container);
 }
 
-function drawNonPropMds(container, points, showCentroids) {
+function drawNonPropMds(container, points, showCentroids, scaleDomain = null, useNice = true) {
   renderMdsPlot({
     container,
     points,
@@ -209,27 +228,44 @@ function drawNonPropMds(container, points, showCentroids) {
       node.classList.remove("plot-placeholder");
       node.innerHTML = "";
     },
+    scaleDomain,
+    useNice,
     selectionState: nonPropSelectionState,
   });
 }
 
-function applyResolvedConfiguration(configuration, container = getContainer()) {
+function applyResolvedConfiguration(
+  configuration,
+  container = getContainer(),
+  scaleDomains = resolveScaleDomainsForConfiguration(configuration),
+  useNice = true
+) {
   if (!container) {
     return;
   }
 
   lastResolvedConfiguration = configuration;
   lastPoints = configuration.views.labelBased.points;
+  lastScaleDomains = scaleDomains;
+  lastUseNice = useNice;
   drawNonPropMds(
     container,
     configuration.views.labelBased.points,
-    container.dataset.showCentroids === "true"
+    container.dataset.showCentroids === "true",
+    scaleDomains.labelBased,
+    useNice
   );
-  renderKMeansResult(configuration.views.kmeans);
+  renderKMeansResult(configuration.views.kmeans, scaleDomains.kmeans, useNice);
   observeResize(container);
 }
 
-async function animateResolvedConfigurationTransition(fromConfiguration, toConfiguration, runVersion) {
+async function animateResolvedConfigurationTransition(
+  fromConfiguration,
+  toConfiguration,
+  runVersion,
+  fromScaleDomains,
+  toScaleDomains
+) {
   const labelContainer = getContainer();
   const kmeansContainer = getKMeansContainer();
   if (
@@ -257,6 +293,9 @@ async function animateResolvedConfigurationTransition(fromConfiguration, toConfi
         node.classList.remove("plot-placeholder");
         node.innerHTML = "";
       },
+      fromScaleDomain: fromScaleDomains?.labelBased ?? null,
+      toScaleDomain: toScaleDomains?.labelBased ?? null,
+      useNice: false,
       interpolationSteps,
       shouldContinue,
     }),
@@ -269,6 +308,9 @@ async function animateResolvedConfigurationTransition(fromConfiguration, toConfi
         node.classList.remove("plot-placeholder");
         node.innerHTML = "";
       },
+      fromScaleDomain: fromScaleDomains?.kmeans ?? null,
+      toScaleDomain: toScaleDomains?.kmeans ?? null,
+      useNice: false,
       legendLabels: toConfiguration.views.kmeans.legendLabels,
       colorDomain: toConfiguration.views.kmeans.colorDomain,
       legendItems: buildKMeansLegendItems(toConfiguration.views.kmeans),
@@ -305,18 +347,27 @@ async function renderContinuousPreview(dataset, clusterAttr, weights) {
     }
 
     const previousConfiguration = lastResolvedConfiguration;
+    const nextScaleDomains = resolveScaleDomainsForConfiguration(configuration);
+    const previousScaleDomains =
+      previousConfiguration && lastScaleDomains.labelBased && lastScaleDomains.kmeans
+        ? lastScaleDomains
+        : previousConfiguration
+          ? resolveScaleDomainsForConfiguration(previousConfiguration)
+          : null;
     setContinuousPreviewConfiguration(configuration);
     if (previousConfiguration) {
       await animateResolvedConfigurationTransition(
         previousConfiguration,
         configuration,
-        currentVersion
+        currentVersion,
+        previousScaleDomains,
+        nextScaleDomains
       );
       if (currentVersion !== previewRunVersion || !isContinuousViewEnabled()) {
         return null;
       }
     }
-    applyResolvedConfiguration(configuration, container);
+    applyResolvedConfiguration(configuration, container, nextScaleDomains, false);
     setDisplayedConfiguration(null);
     setStatus("Continuous preview updated.");
     await renderSilhouetteChart();
@@ -462,9 +513,18 @@ export function renderNonPropFromSaved(config) {
 
   lastPoints = points;
   lastResolvedConfiguration = config;
-  drawNonPropMds(container, points, container.dataset.showCentroids === "true");
+  const scaleDomains = resolveScaleDomainsForConfiguration(config);
+  lastScaleDomains = scaleDomains;
+  lastUseNice = true;
+  drawNonPropMds(
+    container,
+    points,
+    container.dataset.showCentroids === "true",
+    scaleDomains.labelBased,
+    true
+  );
 
-  renderKMeansFromSaved(config);
+  renderKMeansFromSaved(config, scaleDomains.kmeans, true);
 }
 
 export function resetNonPropMds() {
@@ -474,6 +534,11 @@ export function resetNonPropMds() {
   lastPoints = [];
   lastResolvedConfiguration = null;
   nonPropSelectionState.clear();
+  lastScaleDomains = {
+    labelBased: null,
+    kmeans: null,
+  };
+  lastUseNice = true;
   syncContinuousViewControls();
 
   if (container) {

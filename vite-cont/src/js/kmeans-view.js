@@ -4,6 +4,8 @@ import { configureCentroidToggle, configureLegendToggle, createSelectionState, r
 
 let resizeObserver;
 let lastResult = null;
+let lastScaleDomain = null;
+let lastUseNice = true;
 const kmeansSelectionState = createSelectionState();
 
 function getContainer() {
@@ -80,7 +82,7 @@ export function buildKMeansLegendItems(result) {
   });
 }
 
-function drawKMeans(container, result) {
+function drawKMeans(container, result, scaleDomain = null, useNice = true) {
   renderMdsPlot({
     container,
     points: result.points,
@@ -89,6 +91,8 @@ function drawKMeans(container, result) {
       node.classList.remove("plot-placeholder");
       node.innerHTML = "";
     },
+    scaleDomain,
+    useNice,
     legendLabels: result.legendLabels,
     colorDomain: result.colorDomain,
     legendItems: buildKMeansLegendItems(result),
@@ -100,31 +104,33 @@ function observeResize(container) {
   resizeObserver?.disconnect();
   resizeObserver = new ResizeObserver(() => {
     if (lastResult?.points?.length) {
-      drawKMeans(container, lastResult);
+      drawKMeans(container, lastResult, lastScaleDomain, lastUseNice);
     }
   });
   resizeObserver.observe(container);
 }
 
-export function renderKMeansResult(result) {
+export function renderKMeansResult(result, scaleDomain = null, useNice = true) {
   const container = getContainer();
   if (!container || !result?.points?.length) {
     return;
   }
 
   lastResult = result;
-  drawKMeans(container, result);
+  lastScaleDomain = scaleDomain;
+  lastUseNice = useNice;
+  drawKMeans(container, result, scaleDomain, useNice);
   observeResize(container);
   setKValue(result.k);
 }
 
-export function renderKMeansFromSaved(config) {
+export function renderKMeansFromSaved(config, scaleDomain = null, useNice = true) {
   const result = config?.views?.kmeans;
   if (!result?.points?.length) {
     return;
   }
 
-  renderKMeansResult(result);
+  renderKMeansResult(result, scaleDomain, useNice);
 }
 
 export function resetKMeansView() {
@@ -133,6 +139,8 @@ export function resetKMeansView() {
   resizeObserver?.disconnect();
   resizeObserver = null;
   lastResult = null;
+  lastScaleDomain = null;
+  lastUseNice = true;
   kmeansSelectionState.clear();
   setKValue(null);
 

@@ -70,16 +70,47 @@ function buildChart(container, clearContainer) {
   };
 }
 
-function buildScales(points, innerWidth, innerHeight) {
+function normalizeDomainRange(domainRange, fallbackExtent) {
+  const [fallbackMin, fallbackMax] = fallbackExtent;
+  const rawMin = Number(domainRange?.[0]);
+  const rawMax = Number(domainRange?.[1]);
+  const minValue = Number.isFinite(rawMin) ? rawMin : fallbackMin;
+  const maxValue = Number.isFinite(rawMax) ? rawMax : fallbackMax;
+
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+    return [-1, 1];
+  }
+
+  if (minValue === maxValue) {
+    const delta = Math.max(Math.abs(minValue) * 0.1, 1);
+    return [minValue - delta, maxValue + delta];
+  }
+
+  return [Math.min(minValue, maxValue), Math.max(minValue, maxValue)];
+}
+
+function buildScales(points, innerWidth, innerHeight, scaleDomain = null, useNice = true) {
+  const fallbackXExtent = d3.extent(points, (d) => d.x);
+  const fallbackYExtent = d3.extent(points, (d) => d.y);
+  const xDomain = normalizeDomainRange(scaleDomain?.x, fallbackXExtent);
+  const yDomain = normalizeDomainRange(scaleDomain?.y, fallbackYExtent);
+  const xScale = d3.scaleLinear().domain(xDomain).range([0, innerWidth]);
+  const yScale = d3.scaleLinear().domain(yDomain).range([innerHeight, 0]);
+
+  if (useNice) {
+    xScale.nice();
+    yScale.nice();
+  }
+
   return {
-    x: d3.scaleLinear().domain(d3.extent(points, (d) => d.x)).nice().range([0, innerWidth]),
-    y: d3.scaleLinear().domain(d3.extent(points, (d) => d.y)).nice().range([innerHeight, 0]),
+    x: xScale,
+    y: yScale,
   };
 }
 
-function buildMergedScales(pointGroups, innerWidth, innerHeight) {
+function buildMergedScales(pointGroups, innerWidth, innerHeight, scaleDomain = null, useNice = true) {
   const mergedPoints = pointGroups.flat().filter(Boolean);
-  return buildScales(mergedPoints, innerWidth, innerHeight);
+  return buildScales(mergedPoints, innerWidth, innerHeight, scaleDomain, useNice);
 }
 
 function buildPalette(size) {
@@ -106,8 +137,11 @@ function buildColorScale(points, colorDomain = null) {
 }
 
 function renderAxes(g, x, y, innerWidth, innerHeight) {
-  g.append("g").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x));
-  g.append("g").call(d3.axisLeft(y));
+  const xAxisGroup = g.append("g").attr("transform", `translate(0,${innerHeight})`);
+  const yAxisGroup = g.append("g");
+
+  xAxisGroup.call(d3.axisBottom(x));
+  yAxisGroup.call(d3.axisLeft(y));
 
   g.append("text")
     .attr("x", innerWidth / 2)
@@ -123,6 +157,33 @@ function renderAxes(g, x, y, innerWidth, innerHeight) {
     .attr("text-anchor", "middle")
     .style("font-size", "11px")
     .text("MDS Y");
+
+  return { xAxisGroup, yAxisGroup };
+}
+
+function resolvePointExtent(points, accessor) {
+  return normalizeDomainRange(d3.extent(points, accessor), d3.extent(points, accessor));
+}
+
+export function computeMdsScaleDomain(points) {
+  return {
+    x: resolvePointExtent(points, (point) => point.x),
+    y: resolvePointExtent(points, (point) => point.y),
+  };
+}
+
+function interpolateDomainRange(fromRange, toRange, ratio) {
+  return [
+    fromRange[0] + (toRange[0] - fromRange[0]) * ratio,
+    fromRange[1] + (toRange[1] - fromRange[1]) * ratio,
+  ];
+}
+
+function interpolateScaleDomain(fromDomain, toDomain, ratio) {
+  return {
+    x: interpolateDomainRange(fromDomain.x, toDomain.x, ratio),
+    y: interpolateDomainRange(fromDomain.y, toDomain.y, ratio),
+  };
 }
 
 function createLayers(g) {
@@ -523,13 +584,15 @@ export function renderMdsPlot({
   points,
   showCentroids,
   clearContainer = (node) => (node.innerHTML = ""),
+  scaleDomain = null,
+  useNice = true,
   legendLabels = null,
   colorDomain = null,
   legendItems = null,
   selectionState = null,
 }) {
   const { svg, g, innerWidth, innerHeight } = buildChart(container, clearContainer);
-  const { x, y } = buildScales(points, innerWidth, innerHeight);
+  const { x, y } = buildScales(points, innerWidth, innerHeight, scaleDomain, useNice);
   const color = buildColorScale(points, colorDomain);
   const { pointsLayer, centroidLayer, linksLayer } = createLayers(g);
   const { clusters, centroids } = buildClusterData(points);
@@ -583,6 +646,9 @@ export async function animateMdsPlotInterpolation({
   toPoints,
   showCentroids,
   clearContainer = (node) => (node.innerHTML = ""),
+  fromScaleDomain = null,
+  toScaleDomain = null,
+  useNice = false,
   legendLabels = null,
   colorDomain = null,
   legendItems = null,
@@ -597,13 +663,21 @@ export async function animateMdsPlotInterpolation({
   const stepCount = Math.max(1, Number(interpolationSteps) || 1);
   const initialPoints = interpolatePoints(fromPoints, toPoints, 0);
   const { svg, g, innerWidth, innerHeight } = buildChart(container, clearContainer);
-  const { x, y } = buildMergedScales([fromPoints, toPoints], innerWidth, innerHeight);
+  const resolvedFromScaleDomain = fromScaleDomain ?? computeMdsScaleDomain(fromPoints);
+  const resolvedToScaleDomain = toScaleDomain ?? computeMdsScaleDomain(toPoints);
+  const { x, y } = buildScales(
+    initialPoints,
+    innerWidth,
+    innerHeight,
+    resolvedFromScaleDomain,
+    useNice
+  );
   const color = buildColorScale(toPoints, colorDomain);
   const { pointsLayer, centroidLayer } = createLayers(g);
   const resolvedLegendLabels =
     Array.isArray(legendLabels) && legendLabels.length ? legendLabels : color.domain();
 
-  renderAxes(g, x, y, innerWidth, innerHeight);
+  const { xAxisGroup, yAxisGroup } = renderAxes(g, x, y, innerWidth, innerHeight);
   renderLegend(
     container,
     resolvedLegendLabels,
@@ -647,6 +721,18 @@ export async function animateMdsPlotInterpolation({
     const ratio = stepIndex / stepCount;
     const framePoints = interpolatePoints(fromPoints, toPoints, ratio);
     const frameCentroids = buildClusterData(framePoints).centroids;
+    const frameScaleDomain = interpolateScaleDomain(
+      resolvedFromScaleDomain,
+      resolvedToScaleDomain,
+      ratio
+    );
+    const frameScales = buildScales(
+      framePoints,
+      innerWidth,
+      innerHeight,
+      frameScaleDomain,
+      useNice
+    );
 
     circles = pointGroup
       .selectAll("circle")
@@ -668,21 +754,29 @@ export async function animateMdsPlotInterpolation({
       .attr("opacity", DEFAULT_CENTROID_OPACITY);
 
     try {
+      const xAxisTransition = xAxisGroup.transition().duration(frameDuration).ease(d3.easeLinear);
+      xAxisTransition.call(d3.axisBottom(frameScales.x));
+
+      const yAxisTransition = yAxisGroup.transition().duration(frameDuration).ease(d3.easeLinear);
+      yAxisTransition.call(d3.axisLeft(frameScales.y));
+
       await Promise.all([
         circles
           .transition()
           .duration(frameDuration)
           .ease(d3.easeLinear)
-          .attr("cx", (point) => x(point.x))
-          .attr("cy", (point) => y(point.y))
+          .attr("cx", (point) => frameScales.x(point.x))
+          .attr("cy", (point) => frameScales.y(point.y))
           .end(),
         centroidCircles
           .transition()
           .duration(frameDuration)
           .ease(d3.easeLinear)
-          .attr("cx", (centroid) => x(centroid.x))
-          .attr("cy", (centroid) => y(centroid.y))
+          .attr("cx", (centroid) => frameScales.x(centroid.x))
+          .attr("cy", (centroid) => frameScales.y(centroid.y))
           .end(),
+        xAxisTransition.end(),
+        yAxisTransition.end(),
       ]);
     } catch (error) {
       return false;
