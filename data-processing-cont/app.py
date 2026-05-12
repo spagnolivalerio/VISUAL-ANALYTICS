@@ -1,3 +1,5 @@
+import math
+import os
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +13,8 @@ from sklearn.preprocessing import StandardScaler
 
 DEFAULT_CLUSTER_ATTR = "Class label"
 SEED = 200
+MDS_N_INIT = 4
+TARGET_CORE_UTILIZATION = 0.8
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_PATH = BASE_DIR / "data"
@@ -19,38 +23,64 @@ WINE_PATH = DATA_PATH / "wine.csv"
 app = Flask(__name__)
 
 
-def create_metric_mds():
+def get_available_cpu_count():
     try:
-        return MDS(
-            normalized_stress="auto",
-            n_init=4,
-            init="random",
-            n_components=2,
-            metric=True,
-            random_state=SEED,
-        )
+        return max(1, len(os.sched_getaffinity(0)))
+    except AttributeError:
+        return max(1, os.cpu_count() or 1)
+
+
+def resolve_mds_n_jobs():
+    available_cpus = get_available_cpu_count()
+    if available_cpus <= 1:
+        return 1
+    return max(1, math.floor(available_cpus * TARGET_CORE_UTILIZATION))
+
+
+MDS_N_JOBS = resolve_mds_n_jobs()
+
+
+def create_metric_mds():
+    base_kwargs = {
+        "n_init": MDS_N_INIT,
+        "init": "random",
+        "n_components": 2,
+        "metric": True,
+        "random_state": SEED,
+        "n_jobs": MDS_N_JOBS,
+    }
+    try:
+        return MDS(normalized_stress="auto", **base_kwargs)
     except TypeError:
-        return MDS(n_init=4, init="random", n_components=2, metric=True, random_state=SEED)
+        try:
+            return MDS(**base_kwargs)
+        except TypeError:
+            fallback_kwargs = dict(base_kwargs)
+            fallback_kwargs.pop("n_jobs", None)
+            return MDS(**fallback_kwargs)
 
 
 def create_precomputed_mds():
+    base_kwargs = {
+        "n_init": MDS_N_INIT,
+        "init": "random",
+        "n_components": 2,
+        "random_state": SEED,
+        "n_jobs": MDS_N_JOBS,
+    }
     try:
         return MDS(
             normalized_stress="auto",
-            n_init=4,
-            init="random",
-            n_components=2,
             metric="precomputed",
-            random_state=SEED,
+            **base_kwargs,
         )
     except (TypeError, ValueError):
-        return MDS(
-            n_init=4,
-            init="random",
-            n_components=2,
-            dissimilarity="precomputed",
-            random_state=SEED,
-        )
+        try:
+            return MDS(dissimilarity="precomputed", **base_kwargs)
+        except TypeError:
+            fallback_kwargs = dict(base_kwargs)
+            fallback_kwargs.pop("n_jobs", None)
+            return MDS(dissimilarity="precomputed", **fallback_kwargs)
 
 
 def resolve_dataset_path(dataset_name):
@@ -280,17 +310,12 @@ def parse_weights(weights_payload, attributes):
 
 
 def compute_weighted_dissimilarities(scaled_features, weights):
-    n_samples = scaled_features.shape[0]
-    dissimilarities = np.zeros((n_samples, n_samples), dtype=float)
-
-    for i in range(n_samples):
-        for j in range(i + 1, n_samples):
-            diff = scaled_features[i] - scaled_features[j]
-            distance = np.sqrt(np.sum(weights * (diff ** 2)))
-            dissimilarities[i, j] = distance
-            dissimilarities[j, i] = distance
-
-    return dissimilarities
+    weighted_features = apply_feature_weights(scaled_features, weights)
+    squared_norms = np.sum(weighted_features ** 2, axis=1, keepdims=True)
+    dissimilarities = squared_norms + squared_norms.T - 2.0 * weighted_features @ weighted_features.T
+    np.maximum(dissimilarities, 0.0, out=dissimilarities)
+    np.fill_diagonal(dissimilarities, 0.0)
+    return np.sqrt(dissimilarities, out=dissimilarities)
 
 
 def project_metric_mds(scaled_features):
