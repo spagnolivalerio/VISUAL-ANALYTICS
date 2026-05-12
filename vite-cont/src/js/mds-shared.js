@@ -10,6 +10,7 @@ const ACTIVE_CENTROID_OPACITY = 1;
 const POINT_RADIUS = 3;
 const ACTIVE_POINT_RADIUS = 4.2;
 const CENTROID_RADIUS = 6;
+const DEFAULT_ANIMATION_FRAME_DURATION = 44;
 
 export function createSelectionState() {
   let selection = null;
@@ -74,6 +75,11 @@ function buildScales(points, innerWidth, innerHeight) {
     x: d3.scaleLinear().domain(d3.extent(points, (d) => d.x)).nice().range([0, innerWidth]),
     y: d3.scaleLinear().domain(d3.extent(points, (d) => d.y)).nice().range([innerHeight, 0]),
   };
+}
+
+function buildMergedScales(pointGroups, innerWidth, innerHeight) {
+  const mergedPoints = pointGroups.flat().filter(Boolean);
+  return buildScales(mergedPoints, innerWidth, innerHeight);
 }
 
 function buildPalette(size) {
@@ -557,4 +563,131 @@ export function renderMdsPlot({
   bindSelectionEvents(svg, circles, centroidCircles, selectionController, selectionState);
   bindGlobalSelectionSync(container, selectionController, selectionState);
   restoreSelection(points, clusters, selectionState, selectionController);
+}
+
+function interpolatePoints(fromPoints, toPoints, ratio) {
+  const fromPointById = new Map((fromPoints || []).map((point) => [point.id, point]));
+  return toPoints.map((toPoint) => {
+    const fromPoint = fromPointById.get(toPoint.id) || toPoint;
+    return {
+      ...toPoint,
+      x: fromPoint.x + (toPoint.x - fromPoint.x) * ratio,
+      y: fromPoint.y + (toPoint.y - fromPoint.y) * ratio,
+    };
+  });
+}
+
+export async function animateMdsPlotInterpolation({
+  container,
+  fromPoints,
+  toPoints,
+  showCentroids,
+  clearContainer = (node) => (node.innerHTML = ""),
+  legendLabels = null,
+  colorDomain = null,
+  legendItems = null,
+  interpolationSteps = 4,
+  frameDuration = DEFAULT_ANIMATION_FRAME_DURATION,
+  shouldContinue = null,
+}) {
+  if (!container || !Array.isArray(fromPoints) || !Array.isArray(toPoints) || !toPoints.length) {
+    return false;
+  }
+
+  const stepCount = Math.max(1, Number(interpolationSteps) || 1);
+  const initialPoints = interpolatePoints(fromPoints, toPoints, 0);
+  const { svg, g, innerWidth, innerHeight } = buildChart(container, clearContainer);
+  const { x, y } = buildMergedScales([fromPoints, toPoints], innerWidth, innerHeight);
+  const color = buildColorScale(toPoints, colorDomain);
+  const { pointsLayer, centroidLayer } = createLayers(g);
+  const resolvedLegendLabels =
+    Array.isArray(legendLabels) && legendLabels.length ? legendLabels : color.domain();
+
+  renderAxes(g, x, y, innerWidth, innerHeight);
+  renderLegend(
+    container,
+    resolvedLegendLabels,
+    color,
+    container.dataset.showLegend === "true",
+    legendItems
+  );
+
+  const pointGroup = pointsLayer.append("g");
+  let circles = pointGroup
+    .selectAll("circle")
+    .data(initialPoints, (point) => point.id)
+    .join("circle")
+    .attr("cx", (point) => x(point.x))
+    .attr("cy", (point) => y(point.y))
+    .attr("r", POINT_RADIUS)
+    .attr("fill", (point) => color(getPointColorLabel(point)))
+    .attr("opacity", DEFAULT_POINT_OPACITY);
+  circles.append("title").text((point) => `id: ${point.id}, cluster: ${point.class_label}`);
+
+  const initialCentroids = buildClusterData(initialPoints).centroids;
+  let centroidCircles = centroidLayer
+    .selectAll("circle")
+    .data(initialCentroids, (centroid) => centroid.label)
+    .join("circle")
+    .attr("cx", (centroid) => x(centroid.x))
+    .attr("cy", (centroid) => y(centroid.y))
+    .attr("r", CENTROID_RADIUS)
+    .attr("fill", (centroid) => color(centroid.colorLabel))
+    .attr("stroke", "#ffffff")
+    .attr("stroke-width", 1.5)
+    .attr("opacity", DEFAULT_CENTROID_OPACITY);
+
+  applyCentroidVisibility(centroidLayer, showCentroids);
+
+  for (let stepIndex = 1; stepIndex <= stepCount; stepIndex += 1) {
+    if (typeof shouldContinue === "function" && !shouldContinue()) {
+      return false;
+    }
+
+    const ratio = stepIndex / stepCount;
+    const framePoints = interpolatePoints(fromPoints, toPoints, ratio);
+    const frameCentroids = buildClusterData(framePoints).centroids;
+
+    circles = pointGroup
+      .selectAll("circle")
+      .data(framePoints, (point) => point.id)
+      .join("circle")
+      .attr("r", POINT_RADIUS)
+      .attr("fill", (point) => color(getPointColorLabel(point)))
+      .attr("opacity", DEFAULT_POINT_OPACITY);
+    circles.select("title").text((point) => `id: ${point.id}, cluster: ${point.class_label}`);
+
+    centroidCircles = centroidLayer
+      .selectAll("circle")
+      .data(frameCentroids, (centroid) => centroid.label)
+      .join("circle")
+      .attr("r", CENTROID_RADIUS)
+      .attr("fill", (centroid) => color(centroid.colorLabel))
+      .attr("stroke", "#ffffff")
+      .attr("stroke-width", 1.5)
+      .attr("opacity", DEFAULT_CENTROID_OPACITY);
+
+    try {
+      await Promise.all([
+        circles
+          .transition()
+          .duration(frameDuration)
+          .ease(d3.easeLinear)
+          .attr("cx", (point) => x(point.x))
+          .attr("cy", (point) => y(point.y))
+          .end(),
+        centroidCircles
+          .transition()
+          .duration(frameDuration)
+          .ease(d3.easeLinear)
+          .attr("cx", (centroid) => x(centroid.x))
+          .attr("cy", (centroid) => y(centroid.y))
+          .end(),
+      ]);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  return true;
 }

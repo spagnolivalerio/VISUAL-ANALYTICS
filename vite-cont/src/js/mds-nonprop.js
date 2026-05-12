@@ -14,8 +14,14 @@ import {
   setDisplayedConfiguration,
 } from "./config-selection";
 import { getNextTimestep, saveConfiguration } from "./config-store";
-import { loadKMeans, renderKMeansFromSaved, renderKMeansResult } from "./kmeans-view";
-import { configureCentroidToggle, configureLegendToggle, createSelectionState, renderMdsPlot } from "./mds-shared";
+import { buildKMeansLegendItems, loadKMeans, renderKMeansFromSaved, renderKMeansResult } from "./kmeans-view";
+import {
+  animateMdsPlotInterpolation,
+  configureCentroidToggle,
+  configureLegendToggle,
+  createSelectionState,
+  renderMdsPlot,
+} from "./mds-shared";
 import { renderSavedScatterPlot } from "./saved-scatter-plots";
 import { renderSilhouetteChart } from "./silhouette-chart";
 import { renderStarGraph } from "./star-graph";
@@ -25,9 +31,13 @@ const CONTINUOUS_TOGGLE_BUTTON_ID = "continuous-view-btn";
 const RUN_BUTTON_ID = "run-nonprop-btn";
 const STATUS_ID = "nonprop-status";
 const PREVIEW_DEBOUNCE_MS = 90;
+const WEIGHT_SLIDER_STEP = 0.25;
+const INTERPOLATION_SEGMENTS_PER_STEP = 8;
+const MAX_INTERPOLATION_STEPS = 16;
 
 let resizeObserver;
 let lastPoints = [];
+let lastResolvedConfiguration = null;
 let previewDebounceTimer = null;
 let previewRunVersion = 0;
 let weightsChangeListenerBound = false;
@@ -39,6 +49,10 @@ function getContainer() {
 
 function getRunButton() {
   return document.getElementById(RUN_BUTTON_ID);
+}
+
+function getKMeansContainer() {
+  return document.getElementById("kmeans-container");
 }
 
 function getContinuousViewButton() {
@@ -62,6 +76,21 @@ function buildWeightsSignature(weights, dataset, clusterAttr) {
     clusterAttr: clusterAttr || null,
     weights,
   });
+}
+
+function resolveInterpolationStepCount(fromWeights, toWeights) {
+  const weightKeys = new Set([
+    ...Object.keys(fromWeights || {}),
+    ...Object.keys(toWeights || {}),
+  ]);
+  const maxWeightDelta = Array.from(weightKeys).reduce((maxDelta, key) => {
+    const fromValue = Number(fromWeights?.[key] ?? 0);
+    const toValue = Number(toWeights?.[key] ?? 0);
+    return Math.max(maxDelta, Math.abs(toValue - fromValue));
+  }, 0);
+
+  const sliderStepCount = Math.max(1, Math.round(maxWeightDelta / WEIGHT_SLIDER_STEP) || 1);
+  return Math.min(MAX_INTERPOLATION_STEPS, sliderStepCount * INTERPOLATION_SEGMENTS_PER_STEP);
 }
 
 function syncContinuousViewControls() {
@@ -189,6 +218,7 @@ function applyResolvedConfiguration(configuration, container = getContainer()) {
     return;
   }
 
+  lastResolvedConfiguration = configuration;
   lastPoints = configuration.views.labelBased.points;
   drawNonPropMds(
     container,
@@ -197,6 +227,57 @@ function applyResolvedConfiguration(configuration, container = getContainer()) {
   );
   renderKMeansResult(configuration.views.kmeans);
   observeResize(container);
+}
+
+async function animateResolvedConfigurationTransition(fromConfiguration, toConfiguration, runVersion) {
+  const labelContainer = getContainer();
+  const kmeansContainer = getKMeansContainer();
+  if (
+    !labelContainer ||
+    !kmeansContainer ||
+    !fromConfiguration?.views?.labelBased?.points?.length ||
+    !fromConfiguration?.views?.kmeans?.points?.length
+  ) {
+    return false;
+  }
+
+  const interpolationSteps = resolveInterpolationStepCount(
+    fromConfiguration.weights,
+    toConfiguration.weights
+  );
+  const shouldContinue = () => runVersion === previewRunVersion && isContinuousViewEnabled();
+
+  const [labelAnimated, kmeansAnimated] = await Promise.all([
+    animateMdsPlotInterpolation({
+      container: labelContainer,
+      fromPoints: fromConfiguration.views.labelBased.points,
+      toPoints: toConfiguration.views.labelBased.points,
+      showCentroids: labelContainer.dataset.showCentroids === "true",
+      clearContainer: (node) => {
+        node.classList.remove("plot-placeholder");
+        node.innerHTML = "";
+      },
+      interpolationSteps,
+      shouldContinue,
+    }),
+    animateMdsPlotInterpolation({
+      container: kmeansContainer,
+      fromPoints: fromConfiguration.views.kmeans.points,
+      toPoints: toConfiguration.views.kmeans.points,
+      showCentroids: kmeansContainer.dataset.showCentroids === "true",
+      clearContainer: (node) => {
+        node.classList.remove("plot-placeholder");
+        node.innerHTML = "";
+      },
+      legendLabels: toConfiguration.views.kmeans.legendLabels,
+      colorDomain: toConfiguration.views.kmeans.colorDomain,
+      legendItems: buildKMeansLegendItems(toConfiguration.views.kmeans),
+      interpolationSteps,
+      shouldContinue,
+    }),
+  ]);
+
+  return labelAnimated && kmeansAnimated && shouldContinue();
 }
 
 function previewMatchesCurrentWeights(dataset, clusterAttr, weights) {
@@ -223,7 +304,18 @@ async function renderContinuousPreview(dataset, clusterAttr, weights) {
       return null;
     }
 
+    const previousConfiguration = lastResolvedConfiguration;
     setContinuousPreviewConfiguration(configuration);
+    if (previousConfiguration) {
+      await animateResolvedConfigurationTransition(
+        previousConfiguration,
+        configuration,
+        currentVersion
+      );
+      if (currentVersion !== previewRunVersion || !isContinuousViewEnabled()) {
+        return null;
+      }
+    }
     applyResolvedConfiguration(configuration, container);
     setDisplayedConfiguration(null);
     setStatus("Continuous preview updated.");
@@ -369,6 +461,7 @@ export function renderNonPropFromSaved(config) {
   }
 
   lastPoints = points;
+  lastResolvedConfiguration = config;
   drawNonPropMds(container, points, container.dataset.showCentroids === "true");
 
   renderKMeansFromSaved(config);
@@ -379,6 +472,7 @@ export function resetNonPropMds() {
 
   invalidatePreviewScheduling();
   lastPoints = [];
+  lastResolvedConfiguration = null;
   nonPropSelectionState.clear();
   syncContinuousViewControls();
 
