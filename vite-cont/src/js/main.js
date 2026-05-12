@@ -1,16 +1,20 @@
-import { getCurrentContext } from "./app-context";
+import { clearCurrentContext, getCurrentContext } from "./app-context";
+import { resetConfigurationSelectionState } from "./config-selection";
+import { resetConfigurations } from "./config-store";
 import { initConfigurationSync } from "./configuration-sync";
 import { initKMeansView, resetKMeansView } from "./kmeans-view";
 import { initNonPropMds, resetNonPropMds } from "./mds-nonprop";
+import { renderSavedScatterPlots } from "./saved-scatter-plots";
 import { renderSilhouetteChart } from "./silhouette-chart";
 import { initSidebar } from "./sidebar";
-import { setupStarSelection } from "./star-selection";
-import { renderWeightsPanel } from "./weights-panel";
+import { setSelectedStarTarget, setupStarSelection } from "./star-selection";
+import { renderWeightsPanel, resetWeightsPanel } from "./weights-panel";
 
 const DATASET_BADGE_ID = "topbar-dataset";
 const ATTRIBUTE_BADGE_ID = "topbar-attribute";
 const STATUS_TEXT_ID = "topbar-status";
 const REFRESH_BUTTON_ID = "refresh-dashboard-btn";
+const RESET_BUTTON_ID = "reset-weights-btn";
 
 let initialized = false;
 
@@ -61,15 +65,40 @@ function bindRefreshButton() {
 
   refreshButton.addEventListener("click", async () => {
     refreshButton.disabled = true;
-    setTopBarStatus("Refreshing dashboard...");
     try {
-      await refreshDashboard();
+      await resetApplication();
     } finally {
       refreshButton.disabled = false;
     }
   });
 
   refreshButton.dataset.bound = "true";
+}
+
+async function resetApplication() {
+  setTopBarStatus("Resetting application...");
+  window.dispatchEvent(new CustomEvent("mds:reset"));
+  resetConfigurations();
+  resetConfigurationSelectionState();
+  clearCurrentContext();
+  setSelectedStarTarget(null);
+  resetKMeansView();
+  resetNonPropMds();
+  await initSidebar({ onContextChange: refreshDashboard });
+  await refreshDashboard();
+}
+
+function bindResetButton() {
+  const resetButton = document.getElementById(RESET_BUTTON_ID);
+  if (!resetButton || resetButton.dataset.bound === "true") {
+    return;
+  }
+
+  resetButton.addEventListener("click", () => {
+    resetWeightsPanel();
+  });
+
+  resetButton.dataset.bound = "true";
 }
 
 function initializeModules() {
@@ -82,6 +111,7 @@ function initializeModules() {
   setupStarSelection();
   initConfigurationSync();
   bindRefreshButton();
+  bindResetButton();
   initialized = true;
 }
 
@@ -100,6 +130,7 @@ export async function refreshDashboard() {
   }
 
   await Promise.all([renderWeightsPanel(null, dataset, clusterAttr), renderSilhouetteChart()]);
+  renderSavedScatterPlots();
 
   updateTopBarContext();
 }

@@ -131,3 +131,23 @@ export function clearAssignmentsIfMissing(validIds) {
     });
   });
 }
+
+export function resetConfigurationSelectionState() {
+  state.activeSilhouetteView = "labelBased";
+  state.displayedConfigurationId = null;
+  state.starTarget = null;
+  state.lineSelectionIds = {
+    labelBased: null,
+    kmeans: null,
+  };
+  state.starAssignmentsByView = {
+    labelBased: {
+      "star-graph-1": null,
+      "star-graph-2": null,
+    },
+    kmeans: {
+      "star-graph-1": null,
+      "star-graph-2": null,
+    },
+  };
+}

@@ -56,7 +56,7 @@ export async function loadKMeans(dataset, clusterAttr, weights = null) {
   };
 }
 
-function buildLegendItems(result) {
+export function buildKMeansLegendItems(result) {
   const mappingByCluster = new Map(
     result.clusterLabelMapping.map((item) => [item.kmeans_label, item])
   );
@@ -91,7 +91,7 @@ function drawKMeans(container, result) {
     },
     legendLabels: result.legendLabels,
     colorDomain: result.colorDomain,
-    legendItems: buildLegendItems(result),
+    legendItems: buildKMeansLegendItems(result),
     selectionState: kmeansSelectionState,
   });
 }

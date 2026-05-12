@@ -16,6 +16,7 @@ import {
   setActiveSilhouetteView,
 } from "./config-selection";
 import { deleteConfiguration, getConfigurationsForContext } from "./config-store";
+import { renderSavedScatterPlot, renderSavedScatterPlots } from "./saved-scatter-plots";
 import { renderStarGraph } from "./star-graph";
 
 const HEIGHT = 220;
@@ -136,6 +137,7 @@ function refreshStarGraphs() {
     const silhouetteScore = config ? truncate3(resolveSilhouetteScore(config, view)) : null;
     renderStarGraph(config?.weights || null, targetId, silhouetteScore);
   });
+  renderSavedScatterPlots();
 }
 
 function buildScales(points, width, height) {
@@ -284,6 +286,7 @@ function handlePointSelection(point, pointGroup, ringGroup) {
   if (targetId) {
     assignConfigurationToStar(targetId, point);
     renderStarGraph(point.weights, targetId, point.silhouetteScore);
+    renderSavedScatterPlot(targetId);
   }
 
   applyPointStyles(pointGroup, ringGroup);

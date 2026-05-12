@@ -71,11 +71,10 @@
 
       <div class="page-content">
         <section class="top-row" aria-label="Clustering, MDS plots and weights">
-          <article class="panel-card plot-card">
+          <article class="panel-card plot-card current-kmeans-card">
             <div class="panel-header plot-title-row">
               <div>
                 <h2>KMeans Clustering</h2>
-                <p class="panel-subtitle">Weighted KMeans view projected with the shared MDS configuration.</p>
               </div>
               <div class="plot-controls kmeans-controls">
                 <div class="kmeans-inline-control" aria-label="KMeans cluster count">
@@ -113,11 +112,10 @@
             <div id="kmeans-container" class="plot-container"></div>
           </article>
 
-          <article class="panel-card plot-card">
+          <article class="panel-card plot-card current-label-card">
             <div class="panel-header plot-title-row">
               <div>
                 <h2>Label Based Clustering</h2>
-                <p class="panel-subtitle">Dataset labels projected with the shared MDS configuration.</p>
               </div>
               <div class="plot-controls">
                 <button
@@ -151,11 +149,30 @@
             <div id="mds-non-proportional-container" class="plot-container"></div>
           </article>
 
+          <article class="panel-card plot-card saved-config-card saved-config-card-a">
+            <div class="panel-header plot-title-row saved-config-header">
+              <div>
+                <h2>Saved Config A</h2>
+              </div>
+              <span id="saved-config-view-1" class="saved-config-view">Label based view</span>
+            </div>
+            <div id="saved-config-container-1" class="plot-container compact-plot-container"></div>
+          </article>
+
+          <article class="panel-card plot-card saved-config-card saved-config-card-b">
+            <div class="panel-header plot-title-row saved-config-header">
+              <div>
+                <h2>Saved Config B</h2>
+              </div>
+              <span id="saved-config-view-2" class="saved-config-view">Label based view</span>
+            </div>
+            <div id="saved-config-container-2" class="plot-container compact-plot-container"></div>
+          </article>
+
           <article class="panel-card weights-card">
             <div class="panel-header">
               <div>
                 <h2 class="weights-header">Weights Control Panel</h2>
-                <p class="panel-subtitle">Tune the contribution of each numeric attribute.</p>
               </div>
             </div>
 
@@ -167,6 +184,7 @@
                   type="button"
                   class="reset-weights-btn"
                   aria-label="Reset weights"
+                  title="Reset weights"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path
@@ -187,7 +205,6 @@
             <div class="silhouette-toolbar">
               <div>
                 <h2>Silhouette History</h2>
-                <p class="panel-subtitle">Switch between saved KMeans and label-based scores.</p>
               </div>
               <label class="silhouette-view-control" for="silhouette-view-select">
                 <span>View</span>
@@ -215,7 +232,6 @@
               <div class="star-card-toolbar">
                 <div class="star-card-copy">
                   <p class="star-card-label">Star Graph A</p>
-                  <p class="star-card-caption">Pinned configuration for side-by-side comparison.</p>
                 </div>
                 <div class="star-card-actions">
                   <span id="star-silhouette-1" class="star-silhouette" hidden></span>
@@ -240,7 +256,6 @@
               <div class="star-card-toolbar">
                 <div class="star-card-copy">
                   <p class="star-card-label">Star Graph B</p>
-                  <p class="star-card-caption">Second comparison slot for saved configurations.</p>
                 </div>
                 <div class="star-card-actions">
                   <span id="star-silhouette-2" class="star-silhouette" hidden></span>

@@ -119,3 +119,7 @@ export function configurationMatchesContext(config, { dataset, clusterAttr }) {
   const context = normalizeContext(dataset, clusterAttr);
   return config.dataset === context.dataset && config.clusterAttr === context.clusterAttr;
 }
+
+export function resetConfigurations() {
+  sessionStorage.removeItem(STORAGE_KEY);
+}

@@ -118,16 +118,6 @@ function hasAllWeights(weights, attributes) {
   return attributes.every((attribute) => Object.prototype.hasOwnProperty.call(weights, attribute));
 }
 
-function bindResetButton() {
-  const resetButton = document.getElementById("reset-weights-btn");
-  if (!resetButton || resetButton.dataset.bound === "true") {
-    return;
-  }
-
-  resetButton.addEventListener("click", resetWeightsPanel);
-  resetButton.dataset.bound = "true";
-}
-
 export function getWeightsFromPanel() {
   return getSliderElements().reduce((weights, slider) => {
     weights[slider.dataset.attribute] = Number(slider.value);
@@ -200,7 +190,6 @@ export async function renderWeightsPanel(weights = null, datasetArg, clusterAttr
 
     renderWeightRows(attributes, weights);
     setPanelContext(dataset, clusterAttr, attributes);
-    bindResetButton();
   } catch (error) {
     list.textContent = `Unable to load attributes: ${error.message}`;
     setPanelContext(dataset, clusterAttr, []);

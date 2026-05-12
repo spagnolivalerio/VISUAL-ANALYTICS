@@ -215,7 +215,7 @@ label {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 0.92fr) minmax(0, 0.78fr);
+  grid-template-rows: minmax(0, 1.14fr) minmax(0, 0.54fr);
   gap: var(--row-gap);
 }
 
@@ -229,10 +229,14 @@ label {
 
 .top-row {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 270px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    "kmeans label weights"
+    "saved-a saved-b weights";
 }
 
 .bottom-row {
-  grid-template-columns: minmax(0, 1.7fr) minmax(230px, 0.8fr) minmax(230px, 0.8fr);
+  grid-template-columns: minmax(0, 1.48fr) minmax(210px, 0.76fr) minmax(210px, 0.76fr);
 }
 
 .panel-card,
@@ -285,10 +289,28 @@ label {
 
 .plot-card {
   min-height: 0;
+  overflow: hidden;
 }
 
 .weights-card {
   min-width: 0;
+  grid-area: weights;
+}
+
+.current-kmeans-card {
+  grid-area: kmeans;
+}
+
+.current-label-card {
+  grid-area: label;
+}
+
+.saved-config-card-a {
+  grid-area: saved-a;
+}
+
+.saved-config-card-b {
+  grid-area: saved-b;
 }
 
 .plot-container,
@@ -307,6 +329,10 @@ label {
   min-height: 0;
   width: 100%;
   overflow: hidden;
+}
+
+.compact-plot-container {
+  min-height: 0;
 }
 
 .plot-container.plot-placeholder {
@@ -339,6 +365,26 @@ label {
 .plot-control-btn svg {
   width: 15px;
   height: 15px;
+}
+
+.saved-config-header {
+  align-items: center;
+}
+
+.plot-title-row {
+  min-height: 34px;
+  align-items: center;
+}
+
+.saved-config-view {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
 }
 
 .kmeans-inline-control {
@@ -571,7 +617,7 @@ label {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .silhouette-toolbar h2 {
@@ -609,7 +655,7 @@ label {
   height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 10px 10px 6px;
+  padding: 8px 8px 6px;
   background: #ffffff;
 }
 
@@ -655,7 +701,7 @@ label {
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
+  gap: 8px;
   height: 100%;
 }
 
@@ -695,7 +741,7 @@ label {
 .star-card-body {
   min-height: 0;
   display: flex;
-  padding: 8px;
+  padding: 6px;
   border: 1px solid var(--border-soft);
   border-radius: 14px;
   background:
@@ -798,10 +844,11 @@ label {
 
   .top-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 244px;
+    grid-template-rows: repeat(2, minmax(0, 1fr));
   }
 
   .bottom-row {
-    grid-template-columns: minmax(0, 1.5fr) minmax(210px, 0.76fr) minmax(210px, 0.76fr);
+    grid-template-columns: minmax(0, 1.34fr) minmax(196px, 0.72fr) minmax(196px, 0.72fr);
   }
 
   .top-bar-content {
@@ -838,11 +885,16 @@ label {
   }
 
   .top-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 220px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr)) minmax(0, 0.92fr);
+    grid-template-areas:
+      "kmeans label"
+      "saved-a saved-b"
+      "weights weights";
   }
 
   .bottom-row {
-    grid-template-columns: minmax(0, 1.25fr) minmax(190px, 0.72fr) minmax(190px, 0.72fr);
+    grid-template-columns: minmax(0, 1.16fr) minmax(180px, 0.66fr) minmax(180px, 0.66fr);
   }
 
   .star-card-toolbar {
@@ -852,5 +904,37 @@ label {
 
   .star-card-actions {
     justify-content: space-between;
+  }
+}
+
+@media (max-width: 960px) {
+  .page-content {
+    grid-template-rows: minmax(0, 1.2fr) minmax(0, 0.82fr);
+  }
+
+  .top-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(5, minmax(0, auto));
+    grid-template-areas:
+      "kmeans"
+      "label"
+      "saved-a"
+      "saved-b"
+      "weights";
+  }
+
+  .bottom-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .saved-config-header,
+  .silhouette-toolbar,
+  .star-card-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .plot-container,
+  .compact-plot-container {
+    min-height: 200px;
   }
 }

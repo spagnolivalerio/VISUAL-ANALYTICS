@@ -9,6 +9,7 @@ import {
 import { getNextTimestep, saveConfiguration } from "./config-store";
 import { loadKMeans, renderKMeansFromSaved, renderKMeansResult } from "./kmeans-view";
 import { configureCentroidToggle, configureLegendToggle, createSelectionState, renderMdsPlot } from "./mds-shared";
+import { renderSavedScatterPlot } from "./saved-scatter-plots";
 import { renderSilhouetteChart } from "./silhouette-chart";
 import { renderStarGraph } from "./star-graph";
 import { getWeightsFromPanel } from "./weights-panel";
@@ -184,6 +185,7 @@ export function initNonPropMds() {
               ? kmeans.silhouetteScore
               : labelBased.silhouetteScore;
           renderStarGraph(weights, targetId, activeScore);
+          renderSavedScatterPlot(targetId);
         }
         renderSilhouetteChart();
       } catch (error) {
