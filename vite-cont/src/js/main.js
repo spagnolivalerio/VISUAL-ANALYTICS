@@ -1,4 +1,8 @@
 import { clearCurrentContext, getCurrentContext } from "./app-context";
+import {
+  clearContinuousPreviewConfiguration,
+  resetContinuousViewState,
+} from "./continuous-view-state";
 import { resetConfigurationSelectionState } from "./config-selection";
 import { resetConfigurations } from "./config-store";
 import { initConfigurationSync } from "./configuration-sync";
@@ -80,6 +84,7 @@ async function resetApplication() {
   window.dispatchEvent(new CustomEvent("mds:reset"));
   resetConfigurations();
   resetConfigurationSelectionState();
+  resetContinuousViewState();
   clearCurrentContext();
   setSelectedStarTarget(null);
   resetKMeansView();
@@ -119,6 +124,7 @@ export async function refreshDashboard() {
   const { dataset, clusterAttr } = getCurrentContext();
   updateTopBarContext();
   window.dispatchEvent(new CustomEvent("mds:reset"));
+  clearContinuousPreviewConfiguration();
   resetKMeansView();
   resetNonPropMds();
 

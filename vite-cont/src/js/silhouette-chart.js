@@ -1,6 +1,10 @@
 import * as d3 from "d3";
 import { getCurrentContext } from "./app-context";
 import {
+  getContinuousPreviewConfiguration,
+  isContinuousViewEnabled,
+} from "./continuous-view-state";
+import {
   assignConfigurationToStar,
   clearAssignmentsIfMissing,
   clearAssignedConfiguration,
@@ -28,6 +32,7 @@ const DEFAULT_POINT_OPACITY = 0.7;
 const HIGHLIGHTED_POINT_OPACITY = 1;
 const STAR_GRAPH_IDS = ["star-graph-1", "star-graph-2"];
 const MIN_SILHOUETTE_SPAN = 0.001;
+const PREVIEW_POINT_ID = "__continuous_preview__";
 
 function truncate3(value) {
   const numericValue = Number(value);
@@ -122,10 +127,39 @@ function normalizeConfigurations(items, view = getActiveSilhouetteView()) {
     .filter((item) => Number.isFinite(item.silhouetteScore));
 }
 
+function buildPreviewConfiguration(items, context, view = getActiveSilhouetteView()) {
+  if (!isContinuousViewEnabled()) {
+    return null;
+  }
+
+  const preview = getContinuousPreviewConfiguration();
+  if (!preview) {
+    return null;
+  }
+
+  if (preview.dataset !== context.dataset || preview.clusterAttr !== context.clusterAttr) {
+    return null;
+  }
+
+  const silhouetteScore = truncate3(resolveSilhouetteScore(preview, view));
+  if (!Number.isFinite(silhouetteScore)) {
+    return null;
+  }
+
+  const nextTimestep = items.length ? Number(items[items.length - 1].timestep) + 1 : 0;
+  return {
+    ...preview,
+    id: PREVIEW_POINT_ID,
+    timestep: nextTimestep,
+    silhouetteScore,
+    isPreview: true,
+  };
+}
+
 function syncSelectionState(points, context) {
   clearInvalidAssignments(context);
 
-  const validIds = new Set(points.map((point) => point.id));
+  const validIds = new Set(points.filter((point) => !point.isPreview).map((point) => point.id));
   clearSelectionIfMissing(validIds);
   clearAssignmentsIfMissing(validIds);
 }
@@ -236,6 +270,7 @@ function renderSilhouetteLine(svg, points, xScale, yScale) {
 }
 
 function getHighlightColor(point, leftId, rightId, lineSelectionId) {
+  if (point.isPreview) return "#8b5cf6";
   if (point.id === leftId && point.id === rightId) return "#f59e0b";
   if (point.id === leftId) return "#22c55e";
   if (point.id === rightId) return "#ef4444";
@@ -243,6 +278,9 @@ function getHighlightColor(point, leftId, rightId, lineSelectionId) {
 }
 
 function isHighlightedPoint(point, leftId, rightId, lineSelectionId) {
+  if (point.isPreview) {
+    return false;
+  }
   return point.id === leftId || point.id === rightId || point.id === lineSelectionId;
 }
 
@@ -254,18 +292,22 @@ function applyPointStyles(pointGroup, ringGroup = null) {
 
   pointGroup
     .attr("r", (point) =>
-      isHighlightedPoint(point, leftId, rightId, lineSelectionId)
+      point.isPreview
         ? HIGHLIGHTED_POINT_RADIUS
-        : DEFAULT_POINT_RADIUS
+        : isHighlightedPoint(point, leftId, rightId, lineSelectionId)
+          ? HIGHLIGHTED_POINT_RADIUS
+          : DEFAULT_POINT_RADIUS
     )
     .attr("opacity", (point) =>
-      isHighlightedPoint(point, leftId, rightId, lineSelectionId)
+      point.isPreview
         ? HIGHLIGHTED_POINT_OPACITY
-        : DEFAULT_POINT_OPACITY
+        : isHighlightedPoint(point, leftId, rightId, lineSelectionId)
+          ? HIGHLIGHTED_POINT_OPACITY
+          : DEFAULT_POINT_OPACITY
     )
     .attr("fill", (point) => getHighlightColor(point, leftId, rightId, lineSelectionId))
-    .attr("stroke", (point) => (point.id === lineSelectionId ? "#111827" : "none"))
-    .attr("stroke-width", (point) => (point.id === lineSelectionId ? 2 : 0));
+    .attr("stroke", (point) => (point.isPreview ? "#6d28d9" : point.id === lineSelectionId ? "#111827" : "none"))
+    .attr("stroke-width", (point) => (point.isPreview || point.id === lineSelectionId ? 2 : 0));
 
   if (!ringGroup) {
     return;
@@ -275,8 +317,8 @@ function applyPointStyles(pointGroup, ringGroup = null) {
     .attr("r", SELECTION_RING_RADIUS)
     .attr("fill", "none")
     .attr("stroke", "#111827")
-    .attr("stroke-width", (point) => (point.id === displayedId ? 2.6 : 0))
-    .attr("opacity", (point) => (point.id === displayedId ? 1 : 0));
+    .attr("stroke-width", (point) => (!point.isPreview && point.id === displayedId ? 2.6 : 0))
+    .attr("opacity", (point) => (!point.isPreview && point.id === displayedId ? 1 : 0));
 }
 
 function handlePointSelection(point, pointGroup, ringGroup) {
@@ -327,8 +369,12 @@ function renderPoints(svg, points, xScale, yScale) {
     .join("circle")
     .attr("cx", (point) => xScale(point.timestep))
     .attr("cy", (point) => yScale(point.silhouetteScore))
-    .style("cursor", "pointer")
-    .on("click", (_, point) => handlePointSelection(point, pointGroup, ringGroup));
+    .style("cursor", (point) => (point.isPreview ? "default" : "pointer"))
+    .on("click", (_, point) => {
+      if (!point.isPreview) {
+        handlePointSelection(point, pointGroup, ringGroup);
+      }
+    });
 
   applyPointStyles(pointGroup, ringGroup);
   return pointGroup;
@@ -409,7 +455,9 @@ export async function renderSilhouetteChart() {
   bindViewSelector();
 
   try {
-    const points = normalizeConfigurations(await getConfigurationsForContext(context), view);
+    const savedPoints = normalizeConfigurations(await getConfigurationsForContext(context), view);
+    const previewPoint = buildPreviewConfiguration(savedPoints, context, view);
+    const points = previewPoint ? [...savedPoints, previewPoint] : savedPoints;
     syncSelectionState(points, context);
 
     if (!points.length) {

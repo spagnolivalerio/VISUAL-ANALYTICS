@@ -8,6 +8,17 @@ const WEIGHT_MAX = "1";
 const LOADING_MESSAGE = "Loading attributes...";
 const NO_ATTRIBUTES_MESSAGE = "No numeric attributes found.";
 
+function notifyWeightsChanged(attribute, value) {
+  window.dispatchEvent(
+    new CustomEvent("weights:change", {
+      detail: {
+        attribute,
+        value: Number(value),
+      },
+    })
+  );
+}
+
 function formatWeight(value) {
   return Number(value).toFixed(2).replace(/\.00$/, "");
 }
@@ -55,6 +66,7 @@ function buildWeightRow(attributeName, initialValue = DEFAULT_WEIGHT) {
   slider.dataset.attribute = attributeName;
   slider.addEventListener("input", () => {
     value.textContent = formatWeight(slider.value);
+    notifyWeightsChanged(attributeName, slider.value);
   });
 
   row.appendChild(label);

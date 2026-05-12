@@ -1,6 +1,13 @@
 import { parseJsonResponse, requestNonPropMds } from "./api";
 import { getCurrentContext } from "./app-context";
 import {
+  clearContinuousPreviewConfiguration,
+  getContinuousPreviewConfiguration,
+  isContinuousViewEnabled,
+  setContinuousPreviewConfiguration,
+  setContinuousViewEnabled,
+} from "./continuous-view-state";
+import {
   assignConfigurationToStar,
   getActiveSilhouetteView,
   getStarTarget,
@@ -14,9 +21,72 @@ import { renderSilhouetteChart } from "./silhouette-chart";
 import { renderStarGraph } from "./star-graph";
 import { getWeightsFromPanel } from "./weights-panel";
 
+const CONTINUOUS_TOGGLE_BUTTON_ID = "continuous-view-btn";
+const RUN_BUTTON_ID = "run-nonprop-btn";
+const STATUS_ID = "nonprop-status";
+const PREVIEW_DEBOUNCE_MS = 90;
+
 let resizeObserver;
 let lastPoints = [];
+let previewDebounceTimer = null;
+let previewRunVersion = 0;
+let weightsChangeListenerBound = false;
 const nonPropSelectionState = createSelectionState();
+
+function getContainer() {
+  return document.getElementById("mds-non-proportional-container");
+}
+
+function getRunButton() {
+  return document.getElementById(RUN_BUTTON_ID);
+}
+
+function getContinuousViewButton() {
+  return document.getElementById(CONTINUOUS_TOGGLE_BUTTON_ID);
+}
+
+function getStatusElement() {
+  return document.getElementById(STATUS_ID);
+}
+
+function setStatus(message) {
+  const status = getStatusElement();
+  if (status) {
+    status.textContent = message;
+  }
+}
+
+function buildWeightsSignature(weights, dataset, clusterAttr) {
+  return JSON.stringify({
+    dataset: dataset || null,
+    clusterAttr: clusterAttr || null,
+    weights,
+  });
+}
+
+function syncContinuousViewControls() {
+  const runButton = getRunButton();
+  const toggleButton = getContinuousViewButton();
+  const enabled = isContinuousViewEnabled();
+
+  if (runButton) {
+    runButton.textContent = enabled ? "Save config" : "Run MDS";
+  }
+
+  if (toggleButton) {
+    toggleButton.setAttribute("aria-pressed", enabled ? "true" : "false");
+    toggleButton.setAttribute("aria-label", enabled ? "Continous view on" : "Continous view off");
+    toggleButton.title = enabled ? "Continous view on" : "Continous view off";
+  }
+}
+
+function invalidatePreviewScheduling() {
+  previewRunVersion += 1;
+  if (previewDebounceTimer !== null) {
+    clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = null;
+  }
+}
 
 async function loadLabelBasedMds(weights, dataset, clusterAttr) {
   const payload = await parseJsonResponse(await requestNonPropMds(weights, dataset, clusterAttr));
@@ -29,20 +99,12 @@ async function loadLabelBasedMds(weights, dataset, clusterAttr) {
   };
 }
 
-async function persistConfiguration(labelBased, kmeans, weights, dataset, clusterAttr) {
-  const context = getCurrentContext();
-  const resolvedDataset = dataset ?? context.dataset;
-  const resolvedClusterAttr = clusterAttr ?? context.clusterAttr;
-  const timestep = await getNextTimestep({
-    dataset: resolvedDataset,
-    clusterAttr: resolvedClusterAttr,
-  });
-
-  const savedConfig = await saveConfiguration({
-    timestep,
-    dataset: resolvedDataset,
-    clusterAttr: resolvedClusterAttr,
+function buildResolvedConfiguration(labelBased, kmeans, weights, dataset, clusterAttr) {
+  return {
+    dataset,
+    clusterAttr,
     weights,
+    weightsSignature: buildWeightsSignature(weights, dataset, clusterAttr),
     silhouetteScore: labelBased.silhouetteScore,
     silhouetteScores: {
       labelBased: labelBased.silhouetteScore,
@@ -55,6 +117,42 @@ async function persistConfiguration(labelBased, kmeans, weights, dataset, cluste
     points: labelBased.points,
     attributes: Object.keys(weights),
     k: kmeans.k,
+  };
+}
+
+async function computeResolvedConfiguration(weights, dataset, clusterAttr) {
+  const [labelBased, kmeans] = await Promise.all([
+    loadLabelBasedMds(weights, dataset, clusterAttr),
+    loadKMeans(dataset, clusterAttr, weights),
+  ]);
+
+  if (!labelBased.points.length || !kmeans.points.length) {
+    throw new Error("No points returned.");
+  }
+
+  return buildResolvedConfiguration(labelBased, kmeans, weights, dataset, clusterAttr);
+}
+
+async function persistResolvedConfiguration(configuration) {
+  const context = getCurrentContext();
+  const resolvedDataset = configuration.dataset ?? context.dataset;
+  const resolvedClusterAttr = configuration.clusterAttr ?? context.clusterAttr;
+  const timestep = await getNextTimestep({
+    dataset: resolvedDataset,
+    clusterAttr: resolvedClusterAttr,
+  });
+
+  const savedConfig = await saveConfiguration({
+    timestep,
+    dataset: resolvedDataset,
+    clusterAttr: resolvedClusterAttr,
+    weights: configuration.weights,
+    silhouetteScore: configuration.silhouetteScore,
+    silhouetteScores: configuration.silhouetteScores,
+    views: configuration.views,
+    points: configuration.points,
+    attributes: configuration.attributes,
+    k: configuration.k,
   });
 
   return { savedConfig, timestep };
@@ -86,8 +184,184 @@ function drawNonPropMds(container, points, showCentroids) {
   });
 }
 
+function applyResolvedConfiguration(configuration, container = getContainer()) {
+  if (!container) {
+    return;
+  }
+
+  lastPoints = configuration.views.labelBased.points;
+  drawNonPropMds(
+    container,
+    configuration.views.labelBased.points,
+    container.dataset.showCentroids === "true"
+  );
+  renderKMeansResult(configuration.views.kmeans);
+  observeResize(container);
+}
+
+function previewMatchesCurrentWeights(dataset, clusterAttr, weights) {
+  const preview = getContinuousPreviewConfiguration();
+  if (!preview) {
+    return false;
+  }
+
+  return preview.weightsSignature === buildWeightsSignature(weights, dataset, clusterAttr);
+}
+
+async function renderContinuousPreview(dataset, clusterAttr, weights) {
+  const container = getContainer();
+  if (!container) {
+    return null;
+  }
+
+  const currentVersion = ++previewRunVersion;
+  setStatus("Previewing...");
+
+  try {
+    const configuration = await computeResolvedConfiguration(weights, dataset, clusterAttr);
+    if (currentVersion !== previewRunVersion || !isContinuousViewEnabled()) {
+      return null;
+    }
+
+    setContinuousPreviewConfiguration(configuration);
+    applyResolvedConfiguration(configuration, container);
+    setDisplayedConfiguration(null);
+    setStatus("Continuous preview updated.");
+    await renderSilhouetteChart();
+    return configuration;
+  } catch (error) {
+    if (currentVersion === previewRunVersion && isContinuousViewEnabled()) {
+      setStatus(`Preview failed: ${error.message}`);
+    }
+    return null;
+  }
+}
+
+function scheduleContinuousPreview() {
+  if (!isContinuousViewEnabled()) {
+    return;
+  }
+
+  const { dataset, clusterAttr } = getCurrentContext();
+  const weights = getWeightsFromPanel();
+  if (!dataset || !clusterAttr || !Object.keys(weights).length) {
+    return;
+  }
+
+  if (previewDebounceTimer !== null) {
+    clearTimeout(previewDebounceTimer);
+  }
+
+  previewDebounceTimer = window.setTimeout(() => {
+    previewDebounceTimer = null;
+    void renderContinuousPreview(dataset, clusterAttr, weights);
+  }, PREVIEW_DEBOUNCE_MS);
+}
+
+function bindWeightsChangeListener() {
+  if (weightsChangeListenerBound) {
+    return;
+  }
+
+  window.addEventListener("weights:change", () => {
+    scheduleContinuousPreview();
+  });
+
+  weightsChangeListenerBound = true;
+}
+
+function handleSavedConfiguration(savedConfig) {
+  const targetId = getStarTarget();
+  setDisplayedConfiguration(savedConfig);
+  if (targetId) {
+    assignConfigurationToStar(targetId, savedConfig);
+    const activeScore =
+      getActiveSilhouetteView() === "kmeans"
+        ? savedConfig.silhouetteScores?.kmeans ?? savedConfig.views?.kmeans?.silhouetteScore
+        : savedConfig.silhouetteScores?.labelBased ?? savedConfig.views?.labelBased?.silhouetteScore;
+    renderStarGraph(savedConfig.weights, targetId, activeScore);
+    renderSavedScatterPlot(targetId);
+  }
+}
+
+async function saveCurrentConfiguration() {
+  const { dataset, clusterAttr } = getCurrentContext();
+  const weights = getWeightsFromPanel();
+  if (!dataset || !clusterAttr) {
+    setStatus("Select a dataset and cluster attribute first.");
+    return;
+  }
+  if (!Object.keys(weights).length) {
+    setStatus("No weights available.");
+    return;
+  }
+
+  const runButton = getRunButton();
+  if (runButton) {
+    runButton.disabled = true;
+  }
+
+  try {
+    let configuration = null;
+
+    if (isContinuousViewEnabled() && previewMatchesCurrentWeights(dataset, clusterAttr, weights)) {
+      configuration = getContinuousPreviewConfiguration();
+    } else {
+      invalidatePreviewScheduling();
+      setStatus("Computing...");
+      configuration = await computeResolvedConfiguration(weights, dataset, clusterAttr);
+      applyResolvedConfiguration(configuration);
+    }
+
+    if (!configuration) {
+      throw new Error("No configuration available.");
+    }
+
+    const { savedConfig, timestep } = await persistResolvedConfiguration(configuration);
+    clearContinuousPreviewConfiguration();
+    handleSavedConfiguration(savedConfig);
+    setStatus(`Configuration saved (t=${timestep}).`);
+    await renderSilhouetteChart();
+  } catch (error) {
+    setStatus(`Save failed: ${error.message}`);
+  } finally {
+    if (runButton) {
+      runButton.disabled = false;
+    }
+  }
+}
+
+function bindContinuousToggleButton() {
+  const toggleButton = getContinuousViewButton();
+  if (!toggleButton || toggleButton.dataset.bound === "true") {
+    syncContinuousViewControls();
+    return;
+  }
+
+  toggleButton.addEventListener("click", async () => {
+    const nextEnabled = !isContinuousViewEnabled();
+    invalidatePreviewScheduling();
+    setContinuousViewEnabled(nextEnabled);
+
+    if (!nextEnabled) {
+      clearContinuousPreviewConfiguration();
+      syncContinuousViewControls();
+      await renderSilhouetteChart();
+      setStatus("Continuous view disabled.");
+      return;
+    }
+
+    syncContinuousViewControls();
+    setStatus("Continuous view enabled.");
+    scheduleContinuousPreview();
+  });
+
+  toggleButton.dataset.bound = "true";
+  syncContinuousViewControls();
+}
+
 export function renderNonPropFromSaved(config) {
-  const container = document.getElementById("mds-non-proportional-container");
+  const container = getContainer();
   const points = config?.views?.labelBased?.points || config?.points;
 
   if (!container || !Array.isArray(points) || !points.length) {
@@ -101,104 +375,48 @@ export function renderNonPropFromSaved(config) {
 }
 
 export function resetNonPropMds() {
-  const container = document.getElementById("mds-non-proportional-container");
-  const status = document.getElementById("nonprop-status");
+  const container = getContainer();
 
+  invalidatePreviewScheduling();
   lastPoints = [];
   nonPropSelectionState.clear();
+  syncContinuousViewControls();
 
   if (container) {
     container.classList.add("plot-placeholder");
-    container.textContent = "Adjust the weights and run MDS.";
+    container.textContent = isContinuousViewEnabled()
+      ? "Adjust the weights to preview the current configuration."
+      : "Adjust the weights and run MDS.";
   }
 
-  if (status) {
-    status.textContent = "";
-  }
-
+  setStatus("");
 }
 
 export function initNonPropMds() {
-  const container = document.getElementById("mds-non-proportional-container");
-  const runButton = document.getElementById("run-nonprop-btn");
-  const status = document.getElementById("nonprop-status");
+  const container = getContainer();
+  const runButton = getRunButton();
   const toggleButton = document.getElementById("toggle-centroids-nonprop");
   const legendButton = document.getElementById("toggle-legend-nonprop");
 
-  if (!container || !runButton || !status) {
+  if (!container || !runButton) {
     return;
   }
 
   configureCentroidToggle(container, toggleButton);
   configureLegendToggle(container, legendButton);
-
+  bindContinuousToggleButton();
+  bindWeightsChangeListener();
   resetNonPropMds();
 
   if (runButton.dataset.bound === "true") {
+    syncContinuousViewControls();
     return;
   }
 
   runButton.addEventListener("click", async () => {
-    const { dataset, clusterAttr } = getCurrentContext();
-    const weights = getWeightsFromPanel();
-    if (!dataset || !clusterAttr) {
-      status.textContent = "Select a dataset and cluster attribute first.";
-      return;
-    }
-    if (!Object.keys(weights).length) {
-      status.textContent = "No weights available.";
-      return;
-    }
-
-    runButton.disabled = true;
-    status.textContent = "Computing...";
-
-    try {
-      const [labelBased, kmeans] = await Promise.all([
-        loadLabelBasedMds(weights, dataset, clusterAttr),
-        loadKMeans(dataset, clusterAttr, weights),
-      ]);
-
-      if (!labelBased.points.length || !kmeans.points.length) {
-        throw new Error("No points returned.");
-      }
-
-      lastPoints = labelBased.points;
-      drawNonPropMds(container, labelBased.points, container.dataset.showCentroids === "true");
-      renderKMeansResult(kmeans);
-
-      const targetId = getStarTarget();
-      try {
-        const { savedConfig, timestep } = await persistConfiguration(
-          labelBased,
-          kmeans,
-          weights,
-          dataset,
-          clusterAttr
-        );
-        status.textContent = `Configuration saved (t=${timestep}).`;
-        setDisplayedConfiguration(savedConfig);
-        if (targetId) {
-          assignConfigurationToStar(targetId, savedConfig);
-          const activeScore =
-            getActiveSilhouetteView() === "kmeans"
-              ? kmeans.silhouetteScore
-              : labelBased.silhouetteScore;
-          renderStarGraph(weights, targetId, activeScore);
-          renderSavedScatterPlot(targetId);
-        }
-        renderSilhouetteChart();
-      } catch (error) {
-        status.textContent = `Save failed: ${error.message}`;
-      }
-
-      observeResize(container);
-    } catch (error) {
-      status.textContent = `Errore: ${error.message}`;
-    } finally {
-      runButton.disabled = false;
-    }
+    await saveCurrentConfiguration();
   });
 
   runButton.dataset.bound = "true";
+  syncContinuousViewControls();
 }

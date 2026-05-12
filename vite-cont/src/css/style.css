@@ -169,7 +169,8 @@ label {
 .plot-control-btn,
 .delete-config-btn,
 .sync-btn,
-.reset-weights-btn {
+.reset-weights-btn,
+.continuous-view-btn {
   height: var(--control-height);
   padding: 0 12px;
   border: var(--panel-border);
@@ -189,6 +190,7 @@ label {
 .plot-control-btn:hover,
 .delete-config-btn:hover,
 .sync-btn:hover,
+.continuous-view-btn:hover,
 .reset-weights-btn:hover,
 .run-mds-btn:hover,
 .plot-run-btn:hover {
@@ -295,6 +297,17 @@ label {
 .weights-card {
   min-width: 0;
   grid-area: weights;
+}
+
+.weights-card .panel-header {
+  align-items: flex-start;
+}
+
+.weights-header-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .current-kmeans-card {
@@ -522,6 +535,61 @@ label {
   padding: 0;
   background: var(--brand-soft);
   color: var(--brand);
+}
+
+.continuous-view-btn {
+  height: auto;
+  padding: 0;
+  gap: 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  justify-content: flex-start;
+}
+
+.continuous-view-btn:hover {
+  transform: none;
+}
+
+.continuous-view-copy {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.continuous-view-switch {
+  position: relative;
+  width: 46px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #cbd5e1;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.continuous-view-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.22);
+  transition: transform 0.18s ease;
+}
+
+.continuous-view-btn[aria-pressed="true"] .continuous-view-switch {
+  background: #8b5cf6;
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.24);
+}
+
+.continuous-view-btn[aria-pressed="true"] .continuous-view-thumb {
+  transform: translateX(18px);
 }
 
 .reset-weights-btn svg {
