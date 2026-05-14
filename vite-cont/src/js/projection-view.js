@@ -28,6 +28,7 @@ let baseResizeObserver = null;
 let weightedResizeObserver = null;
 let projectionRunVersion = 0;
 let liveUpdateTimer = null;
+const selectedPointIds = new Set();
 
 function getElement(id) {
   return document.getElementById(id);
@@ -118,6 +119,33 @@ function computeSharedDomain(...results) {
   };
 }
 
+function getPointKey(pointId) {
+  return String(pointId);
+}
+
+function toggleSelectedPoint(pointId, shouldSelect) {
+  const key = getPointKey(pointId);
+  if (shouldSelect) {
+    selectedPointIds.add(key);
+  } else {
+    selectedPointIds.delete(key);
+  }
+  renderResults();
+}
+
+function addSelectedPoints(pointIds) {
+  pointIds.forEach((pointId) => selectedPointIds.add(getPointKey(pointId)));
+  renderResults();
+}
+
+function clearSelectedPoints() {
+  if (!selectedPointIds.size) {
+    return;
+  }
+  selectedPointIds.clear();
+  renderResults();
+}
+
 function buildWeightRow(attribute, initialValue = DEFAULT_WEIGHT) {
   const safeId = attribute.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const row = document.createElement("div");
@@ -186,6 +214,9 @@ function drawProjection(container, result, scaleDomain = null) {
     clearContainer: clearPlotContainer,
     scaleDomain,
     useNice: false,
+    selectedPointIds,
+    onPointToggle: toggleSelectedPoint,
+    onLassoSelect: addSelectedPoints,
   });
 }
 
@@ -304,6 +335,7 @@ async function updateWeightedProjection(currentVersion = ++projectionRunVersion)
               fromScaleDomain: fromDomain,
               toScaleDomain: toDomain,
               useNice: false,
+              selectedPointIds,
               interpolationSteps: INTERPOLATION_STEPS,
               shouldContinue,
             })
@@ -316,6 +348,7 @@ async function updateWeightedProjection(currentVersion = ++projectionRunVersion)
           fromScaleDomain: fromDomain,
           toScaleDomain: toDomain,
           useNice: false,
+          selectedPointIds,
           interpolationSteps: INTERPOLATION_STEPS,
           shouldContinue,
         }),
@@ -356,6 +389,7 @@ export async function setProjectionDataset(dataset, { run = true } = {}) {
   activeDataset = dataset || null;
   lastBaseResult = null;
   lastWeightedResult = null;
+  selectedPointIds.clear();
   setPlotPlaceholder(getBaseContainer(), "Computing the unweighted projection.");
   setPlotPlaceholder(getWeightedContainer(), "Computing the weighted projection.");
   notifyProjectionContextChange();
@@ -377,6 +411,7 @@ export function resetProjectionView() {
   attributes = [];
   lastBaseResult = null;
   lastWeightedResult = null;
+  selectedPointIds.clear();
   renderWeights();
   setPlotPlaceholder(getBaseContainer(), "Choose a dataset to render MDS.");
   setPlotPlaceholder(getWeightedContainer(), "Choose a dataset to render MDS.");
@@ -397,6 +432,7 @@ export async function activateProjectionView() {
 
 function bindControls() {
   getElement("reset-projection-weights-btn")?.addEventListener("click", resetWeights);
+  getElement("clear-projection-selection-btn")?.addEventListener("click", clearSelectedPoints);
   configurePointSizeSlider(getBaseContainer(), getElement("point-size-projection-base"));
   configurePointSizeSlider(getWeightedContainer(), getElement("point-size-projection-weighted"));
 }

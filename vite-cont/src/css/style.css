@@ -262,8 +262,11 @@ label {
 }
 
 .projection-row {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 290px;
-  grid-template-areas: "projection-base projection-weighted projection-weights";
+  grid-template-columns: minmax(0, 1fr) 290px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    "projection-base projection-weights"
+    "projection-weighted projection-weights";
 }
 
 .panel-card,
@@ -379,6 +382,14 @@ label {
   min-height: 0;
   width: 100%;
   overflow: hidden;
+}
+
+.projection-lasso-path {
+  fill: rgba(249, 115, 22, 0.14);
+  stroke: #f97316;
+  stroke-width: 1.6;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
 }
 
 .compact-plot-container {
@@ -583,6 +594,7 @@ label {
 
 .projection-weights-actions {
   grid-template-columns: 1fr;
+  grid-auto-rows: var(--control-height);
   justify-content: center;
 }
 
@@ -1010,11 +1022,11 @@ label {
   }
 
   .projection-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 0.72fr);
+    grid-template-columns: minmax(0, 1fr) 244px;
+    grid-template-rows: repeat(2, minmax(0, 1fr));
     grid-template-areas:
-      "projection-base projection-weighted"
-      "projection-weights projection-weights";
+      "projection-base projection-weights"
+      "projection-weighted projection-weights";
   }
 
   .bottom-row {

@@ -15,6 +15,7 @@ const POINT_SIZE_MIN = 0.6;
 const POINT_SIZE_MAX = 3;
 const POINT_SIZE_STEP = 0.1;
 const DEFAULT_ANIMATION_FRAME_DURATION = 44;
+const SELECTED_PLAIN_POINT_COLOR = "#f97316";
 
 export function createSelectionState() {
   let selection = null;
@@ -316,6 +317,96 @@ function renderCentroids(centroidLayer, centroids, x, y, color, sizeScale) {
   return centroidCircles;
 }
 
+function isPlainPointSelected(point, selectedPointIds) {
+  return selectedPointIds?.has?.(point.id) || selectedPointIds?.has?.(String(point.id)) || false;
+}
+
+function getPlainPointFill(point, selectedPointIds, pointColor) {
+  return isPlainPointSelected(point, selectedPointIds) ? SELECTED_PLAIN_POINT_COLOR : pointColor;
+}
+
+function bindPlainPointSelection(circles, selectedPointIds, onPointToggle) {
+  if (typeof onPointToggle !== "function") {
+    return;
+  }
+
+  circles
+    .style("cursor", "pointer")
+    .on("click", (event, point) => {
+      event.stopPropagation();
+      onPointToggle(point.id, !isPlainPointSelected(point, selectedPointIds));
+    });
+}
+
+function bindPlainLassoSelection({ svg, g, points, x, y, onLassoSelect }) {
+  if (typeof onLassoSelect !== "function" || !svg || !g) {
+    return;
+  }
+
+  const svgNode = svg.node();
+  const gNode = g.node();
+  let lassoPoints = [];
+  let lassoPath = null;
+
+  function getLassoPath(pointsList) {
+    if (!pointsList.length) {
+      return "";
+    }
+    return `M${pointsList.map(([px, py]) => `${px},${py}`).join("L")}Z`;
+  }
+
+  function finishLasso(event) {
+    if (!lassoPath) {
+      return;
+    }
+
+    svg.on("pointermove.projection-lasso", null);
+    svg.on("pointerup.projection-lasso", null);
+    svg.on("pointerleave.projection-lasso", null);
+    if (event?.pointerId !== undefined && svgNode.hasPointerCapture?.(event.pointerId)) {
+      svgNode.releasePointerCapture(event.pointerId);
+    }
+
+    const polygon = lassoPoints;
+    lassoPath.remove();
+    lassoPath = null;
+    lassoPoints = [];
+
+    if (polygon.length < 3) {
+      return;
+    }
+
+    const selectedIds = points
+      .filter((point) => d3.polygonContains(polygon, [x(point.x), y(point.y)]))
+      .map((point) => point.id);
+
+    if (selectedIds.length) {
+      onLassoSelect(selectedIds);
+    }
+  }
+
+  svg.on("pointerdown.projection-lasso", (event) => {
+    if (event.button !== 0 || event.target?.tagName?.toLowerCase() === "circle") {
+      return;
+    }
+
+    event.preventDefault();
+    lassoPoints = [d3.pointer(event, gNode)];
+    lassoPath = g
+      .append("path")
+      .attr("class", "projection-lasso-path")
+      .attr("d", getLassoPath(lassoPoints));
+
+    svgNode.setPointerCapture?.(event.pointerId);
+    svg.on("pointermove.projection-lasso", (moveEvent) => {
+      lassoPoints.push(d3.pointer(moveEvent, gNode));
+      lassoPath.attr("d", getLassoPath(lassoPoints));
+    });
+    svg.on("pointerup.projection-lasso", finishLasso);
+    svg.on("pointerleave.projection-lasso", finishLasso);
+  });
+}
+
 export function renderPlainMdsPlot({
   container,
   points,
@@ -323,8 +414,11 @@ export function renderPlainMdsPlot({
   scaleDomain = null,
   useNice = true,
   pointColor = "#1f6feb",
+  selectedPointIds = null,
+  onPointToggle = null,
+  onLassoSelect = null,
 }) {
-  const { g, innerWidth, innerHeight } = buildChart(container, clearContainer);
+  const { svg, g, innerWidth, innerHeight } = buildChart(container, clearContainer);
   const sizeScale = resolvePointSizeScale(container);
   const { x, y } = buildScales(points, innerWidth, innerHeight, scaleDomain, useNice);
 
@@ -338,11 +432,13 @@ export function renderPlainMdsPlot({
     .join("circle")
     .attr("cx", (point) => x(point.x))
     .attr("cy", (point) => y(point.y))
-    .attr("fill", pointColor)
+    .attr("fill", (point) => getPlainPointFill(point, selectedPointIds, pointColor))
     .attr("opacity", DEFAULT_POINT_OPACITY);
 
   applyCircleRadius(circles, POINT_RADIUS, sizeScale);
   circles.append("title").text((point) => `id: ${point.id}`);
+  bindPlainPointSelection(circles, selectedPointIds, onPointToggle);
+  bindPlainLassoSelection({ svg, g, points, x, y, onLassoSelect });
 }
 
 export async function animatePlainMdsPlotInterpolation({
@@ -354,6 +450,7 @@ export async function animatePlainMdsPlotInterpolation({
   toScaleDomain = null,
   useNice = false,
   pointColor = "#1f6feb",
+  selectedPointIds = null,
   interpolationSteps = 4,
   frameDuration = DEFAULT_ANIMATION_FRAME_DURATION,
   shouldContinue = null,
@@ -384,7 +481,7 @@ export async function animatePlainMdsPlotInterpolation({
     .join("circle")
     .attr("cx", (point) => x(point.x))
     .attr("cy", (point) => y(point.y))
-    .attr("fill", pointColor)
+    .attr("fill", (point) => getPlainPointFill(point, selectedPointIds, pointColor))
     .attr("opacity", DEFAULT_POINT_OPACITY);
   applyCircleRadius(circles, POINT_RADIUS, sizeScale);
   circles.append("title").text((point) => `id: ${point.id}`);
@@ -414,7 +511,7 @@ export async function animatePlainMdsPlotInterpolation({
       .selectAll("circle")
       .data(framePoints, (point) => point.id)
       .join("circle")
-      .attr("fill", pointColor)
+      .attr("fill", (point) => getPlainPointFill(point, selectedPointIds, pointColor))
       .attr("opacity", DEFAULT_POINT_OPACITY);
     applyCircleRadius(circles, POINT_RADIUS, frameSizeScale);
     circles.select("title").text((point) => `id: ${point.id}`);
