@@ -1,6 +1,18 @@
 import { parseJsonResponse, requestKMeans } from "./api";
 import { getCurrentContext } from "./app-context";
-import { configureCentroidToggle, configureLegendToggle, createSelectionState, renderMdsPlot } from "./mds-shared";
+import {
+  configureCentroidToggle,
+  configureLegendToggle,
+  configurePointSizeSlider,
+  createSelectionState,
+  renderMdsPlot,
+} from "./mds-shared";
+import {
+  clearPlotContainer,
+  isShowingCentroids,
+  replaceResizeObserver,
+  setPlotPlaceholder,
+} from "./plot-utils";
 
 let resizeObserver;
 let lastResult = null;
@@ -14,11 +26,6 @@ function getContainer() {
 
 function getKValueElement() {
   return document.getElementById("kmeans-k-value");
-}
-
-function setPlaceholder(container, message) {
-  container.classList.add("plot-placeholder");
-  container.textContent = message;
 }
 
 function resolveIdleMessage() {
@@ -86,11 +93,8 @@ function drawKMeans(container, result, scaleDomain = null, useNice = true) {
   renderMdsPlot({
     container,
     points: result.points,
-    showCentroids: container.dataset.showCentroids === "true",
-    clearContainer: (node) => {
-      node.classList.remove("plot-placeholder");
-      node.innerHTML = "";
-    },
+    showCentroids: isShowingCentroids(container),
+    clearContainer: clearPlotContainer,
     scaleDomain,
     useNice,
     legendLabels: result.legendLabels,
@@ -101,13 +105,11 @@ function drawKMeans(container, result, scaleDomain = null, useNice = true) {
 }
 
 function observeResize(container) {
-  resizeObserver?.disconnect();
-  resizeObserver = new ResizeObserver(() => {
+  resizeObserver = replaceResizeObserver(resizeObserver, container, () => {
     if (lastResult?.points?.length) {
       drawKMeans(container, lastResult, lastScaleDomain, lastUseNice);
     }
   });
-  resizeObserver.observe(container);
 }
 
 export function renderKMeansResult(result, scaleDomain = null, useNice = true) {
@@ -148,13 +150,14 @@ export function resetKMeansView() {
     return;
   }
 
-  setPlaceholder(container, resolveIdleMessage());
+  setPlotPlaceholder(container, resolveIdleMessage());
 }
 
 export function initKMeansView() {
   const container = getContainer();
   const toggleButton = document.getElementById("toggle-centroids-kmeans");
   const legendButton = document.getElementById("toggle-legend-kmeans");
+  const sizeSlider = document.getElementById("point-size-kmeans");
 
   if (!container || !toggleButton || !legendButton) {
     return;
@@ -162,6 +165,7 @@ export function initKMeansView() {
 
   configureCentroidToggle(container, toggleButton);
   configureLegendToggle(container, legendButton);
+  configurePointSizeSlider(container, sizeSlider);
   resetKMeansView();
 
 }

@@ -64,7 +64,7 @@
             <span class="top-bar-badge" id="topbar-attribute">No attribute</span>
           </div>
           <div class="top-bar-actions">
-            <button id="refresh-dashboard-btn" class="top-bar-btn" type="button">Refresh View</button>
+            <button id="refresh-dashboard-btn" class="top-bar-btn" type="button">Reset View</button>
           </div>
         </div>
       </div>
@@ -77,6 +77,23 @@
                 <h2>KMeans Clustering</h2>
               </div>
               <div class="plot-controls kmeans-controls">
+                <label class="plot-size-control" for="point-size-kmeans">
+                  <span>Point size</span>
+                  <input id="point-size-kmeans" type="range" aria-label="KMeans point size" />
+                  <button
+                    id="reset-point-size-kmeans"
+                    type="button"
+                    class="point-size-reset-btn"
+                    aria-label="Reset KMeans point size"
+                    title="Reset point size"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M4 12a8 8 0 0 1 13.66-5.66L20 4v6h-6l2.47-2.47A6 6 0 1 0 18 12h2a8 8 0 0 1-16 0z"
+                      />
+                    </svg>
+                  </button>
+                </label>
                 <div class="kmeans-inline-control" aria-label="KMeans cluster count">
                   <span>k</span>
                   <strong id="kmeans-k-value" class="kmeans-k-value">-</strong>
@@ -118,6 +135,23 @@
                 <h2>Label Based Clustering</h2>
               </div>
               <div class="plot-controls">
+                <label class="plot-size-control" for="point-size-nonprop">
+                  <span>Point size</span>
+                  <input id="point-size-nonprop" type="range" aria-label="Label based point size" />
+                  <button
+                    id="reset-point-size-nonprop"
+                    type="button"
+                    class="point-size-reset-btn"
+                    aria-label="Reset label based point size"
+                    title="Reset point size"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M4 12a8 8 0 0 1 13.66-5.66L20 4v6h-6l2.47-2.47A6 6 0 1 0 18 12h2a8 8 0 0 1-16 0z"
+                      />
+                    </svg>
+                  </button>
+                </label>
                 <button
                   id="toggle-legend-nonprop"
                   type="button"
@@ -154,7 +188,26 @@
               <div>
                 <h2>Saved Config A</h2>
               </div>
-              <span id="saved-config-view-1" class="saved-config-view">Label based view</span>
+              <div class="plot-controls saved-plot-controls">
+                <label class="plot-size-control" for="point-size-saved-1">
+                  <span>Point size</span>
+                  <input id="point-size-saved-1" type="range" aria-label="Saved config A point size" />
+                  <button
+                    id="reset-point-size-saved-1"
+                    type="button"
+                    class="point-size-reset-btn"
+                    aria-label="Reset saved config A point size"
+                    title="Reset point size"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M4 12a8 8 0 0 1 13.66-5.66L20 4v6h-6l2.47-2.47A6 6 0 1 0 18 12h2a8 8 0 0 1-16 0z"
+                      />
+                    </svg>
+                  </button>
+                </label>
+                <span id="saved-config-view-1" class="saved-config-view">Label based view</span>
+              </div>
             </div>
             <div id="saved-config-container-1" class="plot-container compact-plot-container"></div>
           </article>
@@ -164,7 +217,26 @@
               <div>
                 <h2>Saved Config B</h2>
               </div>
-              <span id="saved-config-view-2" class="saved-config-view">Label based view</span>
+              <div class="plot-controls saved-plot-controls">
+                <label class="plot-size-control" for="point-size-saved-2">
+                  <span>Point size</span>
+                  <input id="point-size-saved-2" type="range" aria-label="Saved config B point size" />
+                  <button
+                    id="reset-point-size-saved-2"
+                    type="button"
+                    class="point-size-reset-btn"
+                    aria-label="Reset saved config B point size"
+                    title="Reset point size"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M4 12a8 8 0 0 1 13.66-5.66L20 4v6h-6l2.47-2.47A6 6 0 1 0 18 12h2a8 8 0 0 1-16 0z"
+                      />
+                    </svg>
+                  </button>
+                </label>
+                <span id="saved-config-view-2" class="saved-config-view">Label based view</span>
+              </div>
             </div>
             <div id="saved-config-container-2" class="plot-container compact-plot-container"></div>
           </article>

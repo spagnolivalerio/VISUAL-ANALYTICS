@@ -1,4 +1,3 @@
-import math
 import os
 from pathlib import Path
 
@@ -13,8 +12,7 @@ from sklearn.preprocessing import StandardScaler
 
 DEFAULT_CLUSTER_ATTR = "Class label"
 SEED = 200
-MDS_N_INIT = 4
-TARGET_CORE_UTILIZATION = 0.8
+MDS_N_INIT = 1
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_PATH = BASE_DIR / "data"
@@ -31,56 +29,54 @@ def get_available_cpu_count():
 
 
 def resolve_mds_n_jobs():
-    available_cpus = get_available_cpu_count()
-    if available_cpus <= 1:
-        return 1
-    return max(1, math.floor(available_cpus * TARGET_CORE_UTILIZATION))
+    raw_value = os.getenv("MDS_N_JOBS")
+    if raw_value:
+        try:
+            return max(1, int(raw_value))
+        except ValueError:
+            pass
+
+    return max(1, min(MDS_N_INIT, get_available_cpu_count()))
 
 
 MDS_N_JOBS = resolve_mds_n_jobs()
 
 
-def create_metric_mds():
+def create_mds(**kwargs):
     base_kwargs = {
         "n_init": MDS_N_INIT,
         "init": "random",
         "n_components": 2,
-        "metric": True,
         "random_state": SEED,
         "n_jobs": MDS_N_JOBS,
+        **kwargs,
     }
-    try:
-        return MDS(normalized_stress="auto", **base_kwargs)
-    except TypeError:
+    fallback_kwargs = dict(base_kwargs)
+    fallback_kwargs.pop("n_jobs", None)
+
+    for candidate_kwargs in (
+        {"normalized_stress": "auto", **base_kwargs},
+        base_kwargs,
+        {"normalized_stress": "auto", **fallback_kwargs},
+        fallback_kwargs,
+    ):
         try:
-            return MDS(**base_kwargs)
+            return MDS(**candidate_kwargs)
         except TypeError:
-            fallback_kwargs = dict(base_kwargs)
-            fallback_kwargs.pop("n_jobs", None)
-            return MDS(**fallback_kwargs)
+            continue
+
+    return MDS(**fallback_kwargs)
+
+
+def create_metric_mds():
+    return create_mds(metric=True)
 
 
 def create_precomputed_mds():
-    base_kwargs = {
-        "n_init": MDS_N_INIT,
-        "init": "random",
-        "n_components": 2,
-        "random_state": SEED,
-        "n_jobs": MDS_N_JOBS,
-    }
     try:
-        return MDS(
-            normalized_stress="auto",
-            metric="precomputed",
-            **base_kwargs,
-        )
+        return create_mds(metric="precomputed")
     except (TypeError, ValueError):
-        try:
-            return MDS(dissimilarity="precomputed", **base_kwargs)
-        except TypeError:
-            fallback_kwargs = dict(base_kwargs)
-            fallback_kwargs.pop("n_jobs", None)
-            return MDS(dissimilarity="precomputed", **fallback_kwargs)
+        return create_mds(dissimilarity="precomputed")
 
 
 def resolve_dataset_path(dataset_name):

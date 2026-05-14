@@ -2,7 +2,7 @@ import { parseJsonResponse, requestNumericAttributes } from "./api";
 import { getCurrentContext } from "./app-context";
 
 const DEFAULT_WEIGHT = 1;
-const WEIGHT_STEP = "0.25";
+const WEIGHT_STEP = "0.05";
 const WEIGHT_MIN = "0";
 const WEIGHT_MAX = "1";
 const LOADING_MESSAGE = "Loading attributes...";

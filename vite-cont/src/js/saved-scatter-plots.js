@@ -1,18 +1,21 @@
 import { getActiveSilhouetteView, getAssignedConfiguration } from "./config-selection";
 import { buildKMeansLegendItems } from "./kmeans-view";
-import { createSelectionState, renderMdsPlot } from "./mds-shared";
+import { configurePointSizeSlider, createSelectionState, renderMdsPlot } from "./mds-shared";
+import { clearPlotContainer, setPlotPlaceholder } from "./plot-utils";
 
 const PLOT_SPECS = [
   {
     targetId: "star-graph-1",
     containerId: "saved-config-container-1",
     labelId: "saved-config-view-1",
+    sizeSliderId: "point-size-saved-1",
     placeholder: "Pin a configuration to Star Graph A.",
   },
   {
     targetId: "star-graph-2",
     containerId: "saved-config-container-2",
     labelId: "saved-config-view-2",
+    sizeSliderId: "point-size-saved-2",
     placeholder: "Pin a configuration to Star Graph B.",
   },
 ];
@@ -38,11 +41,6 @@ function setViewLabel(spec, text) {
   }
 
   element.textContent = text;
-}
-
-function setPlaceholder(container, message) {
-  container.classList.add("plot-placeholder");
-  container.textContent = message;
 }
 
 function getActiveViewLabel() {
@@ -87,10 +85,7 @@ function drawSavedScatterPlot(container, targetId, payload) {
     container,
     points: payload.points,
     showCentroids: true,
-    clearContainer: (node) => {
-      node.classList.remove("plot-placeholder");
-      node.innerHTML = "";
-    },
+    clearContainer: clearPlotContainer,
     legendLabels: payload.legendLabels,
     colorDomain: payload.colorDomain,
     legendItems: payload.legendItems,
@@ -122,6 +117,7 @@ export function renderSavedScatterPlot(targetId) {
   }
 
   setViewLabel(spec, getActiveViewLabel());
+  configurePointSizeSlider(container, document.getElementById(spec.sizeSliderId));
   bindResizeObserver(spec, container);
 
   const config = getAssignedConfiguration(targetId, getActiveSilhouetteView());
@@ -130,7 +126,7 @@ export function renderSavedScatterPlot(targetId) {
 
   if (!payload?.points?.length) {
     selectionStateByTarget.get(targetId)?.clear?.();
-    setPlaceholder(container, spec.placeholder);
+    setPlotPlaceholder(container, spec.placeholder);
     return;
   }
 

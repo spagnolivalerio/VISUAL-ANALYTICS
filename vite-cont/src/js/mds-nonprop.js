@@ -26,6 +26,7 @@ import {
   computeMdsScaleDomain,
   configureCentroidToggle,
   configureLegendToggle,
+  configurePointSizeSlider,
   createSelectionState,
   renderMdsPlot,
 } from "./mds-shared";
@@ -33,6 +34,12 @@ import { renderSavedScatterPlot } from "./saved-scatter-plots";
 import { renderSilhouetteChart } from "./silhouette-chart";
 import { renderStarGraph } from "./star-graph";
 import { getWeightsFromPanel } from "./weights-panel";
+import {
+  clearPlotContainer,
+  isShowingCentroids,
+  replaceResizeObserver,
+  setPlotPlaceholder,
+} from "./plot-utils";
 
 const CONTINUOUS_TOGGLE_BUTTON_ID = "continuous-view-btn";
 const RUN_BUTTON_ID = "run-nonprop-btn";
@@ -207,22 +214,17 @@ async function persistResolvedConfiguration(configuration) {
 }
 
 function observeResize(container) {
-  if (resizeObserver) {
-    resizeObserver.disconnect();
-  }
-
-  resizeObserver = new ResizeObserver(() => {
+  resizeObserver = replaceResizeObserver(resizeObserver, container, () => {
     if (lastPoints.length) {
       drawNonPropMds(
         container,
         lastPoints,
-        container.dataset.showCentroids === "true",
+        isShowingCentroids(container),
         lastScaleDomains.labelBased,
         lastUseNice
       );
     }
   });
-  resizeObserver.observe(container);
 }
 
 function drawNonPropMds(container, points, showCentroids, scaleDomain = null, useNice = true) {
@@ -230,10 +232,7 @@ function drawNonPropMds(container, points, showCentroids, scaleDomain = null, us
     container,
     points,
     showCentroids,
-    clearContainer: (node) => {
-      node.classList.remove("plot-placeholder");
-      node.innerHTML = "";
-    },
+    clearContainer: clearPlotContainer,
     scaleDomain,
     useNice,
     selectionState: nonPropSelectionState,
@@ -257,7 +256,7 @@ function applyResolvedConfiguration(
   drawNonPropMds(
     container,
     configuration.views.labelBased.points,
-    container.dataset.showCentroids === "true",
+    isShowingCentroids(container),
     scaleDomains.labelBased,
     useNice
   );
@@ -294,11 +293,8 @@ async function animateResolvedConfigurationTransition(
       container: labelContainer,
       fromPoints: fromConfiguration.views.labelBased.points,
       toPoints: toConfiguration.views.labelBased.points,
-      showCentroids: labelContainer.dataset.showCentroids === "true",
-      clearContainer: (node) => {
-        node.classList.remove("plot-placeholder");
-        node.innerHTML = "";
-      },
+      showCentroids: isShowingCentroids(labelContainer),
+      clearContainer: clearPlotContainer,
       fromScaleDomain: fromScaleDomains?.labelBased ?? null,
       toScaleDomain: toScaleDomains?.labelBased ?? null,
       useNice: false,
@@ -310,11 +306,8 @@ async function animateResolvedConfigurationTransition(
       container: kmeansContainer,
       fromPoints: fromConfiguration.views.kmeans.points,
       toPoints: toConfiguration.views.kmeans.points,
-      showCentroids: kmeansContainer.dataset.showCentroids === "true",
-      clearContainer: (node) => {
-        node.classList.remove("plot-placeholder");
-        node.innerHTML = "";
-      },
+      showCentroids: isShowingCentroids(kmeansContainer),
+      clearContainer: clearPlotContainer,
       fromScaleDomain: fromScaleDomains?.kmeans ?? null,
       toScaleDomain: toScaleDomains?.kmeans ?? null,
       useNice: false,
@@ -535,7 +528,7 @@ export function renderNonPropFromSaved(config) {
   drawNonPropMds(
     container,
     points,
-    container.dataset.showCentroids === "true",
+    isShowingCentroids(container),
     scaleDomains.labelBased,
     true
   );
@@ -558,10 +551,12 @@ export function resetNonPropMds() {
   syncContinuousViewControls();
 
   if (container) {
-    container.classList.add("plot-placeholder");
-    container.textContent = isContinuousViewEnabled()
-      ? "Adjust the weights to preview the current configuration."
-      : "Adjust the weights and run MDS.";
+    setPlotPlaceholder(
+      container,
+      isContinuousViewEnabled()
+        ? "Adjust the weights to preview the current configuration."
+        : "Adjust the weights and run MDS."
+    );
   }
 
   setStatus("");
@@ -572,6 +567,7 @@ export function initNonPropMds() {
   const runButton = getRunButton();
   const toggleButton = document.getElementById("toggle-centroids-nonprop");
   const legendButton = document.getElementById("toggle-legend-nonprop");
+  const sizeSlider = document.getElementById("point-size-nonprop");
 
   if (!container || !runButton) {
     return;
@@ -579,6 +575,7 @@ export function initNonPropMds() {
 
   configureCentroidToggle(container, toggleButton);
   configureLegendToggle(container, legendButton);
+  configurePointSizeSlider(container, sizeSlider);
   bindContinuousToggleButton();
   bindWeightsChangeListener();
   resetNonPropMds();

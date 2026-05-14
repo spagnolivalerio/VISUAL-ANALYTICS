@@ -10,6 +10,10 @@ const ACTIVE_CENTROID_OPACITY = 1;
 const POINT_RADIUS = 3;
 const ACTIVE_POINT_RADIUS = 4.2;
 const CENTROID_RADIUS = 6;
+const POINT_SIZE_DEFAULT = 1;
+const POINT_SIZE_MIN = 0.6;
+const POINT_SIZE_MAX = 3;
+const POINT_SIZE_STEP = 0.1;
 const DEFAULT_ANIMATION_FRAME_DURATION = 44;
 
 export function createSelectionState() {
@@ -53,6 +57,63 @@ function getContainerSize(container) {
   };
 }
 
+function resolvePointSizeScale(container) {
+  const sizeScale = Number(container.dataset.pointSizeScale);
+  return Number.isFinite(sizeScale)
+    ? Math.max(POINT_SIZE_MIN, Math.min(POINT_SIZE_MAX, sizeScale))
+    : POINT_SIZE_DEFAULT;
+}
+
+function applyCircleRadius(circles, baseRadius, sizeScale) {
+  return circles
+    .attr("data-base-radius", baseRadius)
+    .attr("r", baseRadius * sizeScale);
+}
+
+function updatePlotPointSizes(container) {
+  const sizeScale = resolvePointSizeScale(container);
+  d3.select(container)
+    .selectAll("[data-base-radius]")
+    .attr("r", function () {
+      return Number(this.dataset.baseRadius) * sizeScale;
+    });
+  d3.select(container)
+    .selectAll(".cluster-centroids circle")
+    .attr("stroke-width", 1.5 * sizeScale);
+}
+
+export function configurePointSizeSlider(container, slider, resetButton = null) {
+  container.dataset.pointSizeScale = String(resolvePointSizeScale(container));
+  if (!slider) {
+    return;
+  }
+  const resolvedResetButton = resetButton ?? slider.closest(".plot-size-control")?.querySelector(".point-size-reset-btn");
+  slider.type = "range";
+  slider.min = String(POINT_SIZE_MIN);
+  slider.max = String(POINT_SIZE_MAX);
+  slider.step = String(POINT_SIZE_STEP);
+  slider.value = container.dataset.pointSizeScale;
+  if (slider._pointSizeBound) {
+    return;
+  }
+  slider.addEventListener("input", () => {
+    container.dataset.pointSizeScale = slider.value;
+    updatePlotPointSizes(container);
+  });
+  slider._pointSizeBound = true;
+
+  if (!resolvedResetButton || resolvedResetButton._pointSizeResetBound) {
+    return;
+  }
+  resolvedResetButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    slider.value = String(POINT_SIZE_DEFAULT);
+    container.dataset.pointSizeScale = slider.value;
+    updatePlotPointSizes(container);
+  });
+  resolvedResetButton._pointSizeResetBound = true;
+}
+
 function buildChart(container, clearContainer) {
   container.classList.remove("plot-placeholder");
   clearContainer(container);
@@ -94,6 +155,13 @@ function buildScales(points, innerWidth, innerHeight, scaleDomain = null, useNic
   const fallbackYExtent = d3.extent(points, (d) => d.y);
   const xDomain = normalizeDomainRange(scaleDomain?.x, fallbackXExtent);
   const yDomain = normalizeDomainRange(scaleDomain?.y, fallbackYExtent);
+  const xPadding = (xDomain[1] - xDomain[0]) * 0.03;
+  const yPadding = (yDomain[1] - yDomain[0]) * 0.08;
+
+  xDomain[0] -= xPadding;
+  xDomain[1] += xPadding;
+  yDomain[0] -= yPadding;
+  yDomain[1] += yPadding;
   const xScale = d3.scaleLinear().domain(xDomain).range([0, innerWidth]);
   const yScale = d3.scaleLinear().domain(yDomain).range([innerHeight, 0]);
 
@@ -211,7 +279,7 @@ function getCentroidSelectionKey(centroid) {
   return centroid?.selectionKey ?? centroid?.colorLabel ?? centroid?.label ?? null;
 }
 
-function renderPoints(pointsLayer, points, x, y, color) {
+function renderPoints(pointsLayer, points, x, y, color, sizeScale) {
   const circles = pointsLayer
     .append("g")
     .selectAll("circle")
@@ -219,28 +287,28 @@ function renderPoints(pointsLayer, points, x, y, color) {
     .join("circle")
     .attr("cx", (d) => x(d.x))
     .attr("cy", (d) => y(d.y))
-    .attr("r", POINT_RADIUS)
     .attr("fill", (d) => color(getPointColorLabel(d)))
     .attr("opacity", DEFAULT_POINT_OPACITY);
 
+  applyCircleRadius(circles, POINT_RADIUS, sizeScale);
   circles.append("title").text((d) => `id: ${d.id}, cluster: ${d.class_label}`);
   return circles;
 }
 
-function renderCentroids(centroidLayer, centroids, x, y, color) {
+function renderCentroids(centroidLayer, centroids, x, y, color, sizeScale) {
   const centroidCircles = centroidLayer
     .selectAll("circle")
     .data(centroids)
     .join("circle")
     .attr("cx", (d) => x(d.x))
     .attr("cy", (d) => y(d.y))
-    .attr("r", CENTROID_RADIUS)
     .attr("fill", (d) => color(d.colorLabel))
     .attr("stroke", "#ffffff")
-    .attr("stroke-width", 1.5)
+    .attr("stroke-width", 1.5 * sizeScale)
     .attr("opacity", DEFAULT_CENTROID_OPACITY)
     .style("cursor", "pointer");
 
+  applyCircleRadius(centroidCircles, CENTROID_RADIUS, sizeScale);
   centroidCircles.append("title").text((d) => `centroid: ${d.label}`);
   return centroidCircles;
 }
@@ -394,13 +462,14 @@ function resolveFrameSelection(points, centroids, selectionState) {
   return null;
 }
 
-function applyAnimatedSelectionStyles(circles, centroidCircles, frameSelection) {
+function applyAnimatedSelectionStyles(circles, centroidCircles, frameSelection, sizeScale) {
   if (!frameSelection) {
     return;
   }
 
   const selectedClusterLabel = frameSelection.centroid.label;
-  circles.attr("opacity", DIMMED_POINT_OPACITY).attr("r", POINT_RADIUS);
+  circles.attr("opacity", DIMMED_POINT_OPACITY);
+  applyCircleRadius(circles, POINT_RADIUS, sizeScale);
   circles
     .filter((point) => point.class_label === selectedClusterLabel)
     .attr("opacity", ACTIVE_POINT_OPACITY);
@@ -408,8 +477,12 @@ function applyAnimatedSelectionStyles(circles, centroidCircles, frameSelection) 
   if (frameSelection.type === "point") {
     circles
       .filter((point) => point.id === frameSelection.selectedPoint.id)
-      .attr("opacity", ACTIVE_CENTROID_OPACITY)
-      .attr("r", ACTIVE_POINT_RADIUS);
+      .attr("opacity", ACTIVE_CENTROID_OPACITY);
+    applyCircleRadius(
+      circles.filter((point) => point.id === frameSelection.selectedPoint.id),
+      ACTIVE_POINT_RADIUS,
+      sizeScale
+    );
   }
 
   centroidCircles.attr("opacity", DIMMED_CENTROID_OPACITY);
@@ -475,11 +548,22 @@ function renderSelectionLinks(
     .attr("y2", (point) => y(point.y));
 }
 
-function createSelectionController(points, clusters, centroids, circles, centroidCircles, linksLayer, x, y) {
+function createSelectionController(
+  points,
+  clusters,
+  centroids,
+  circles,
+  centroidCircles,
+  linksLayer,
+  x,
+  y,
+  container
+) {
   let currentSelection = null;
   const resetHighlight = () => {
     linksLayer.selectAll("line").remove();
-    circles.attr("opacity", DEFAULT_POINT_OPACITY).attr("r", POINT_RADIUS);
+    circles.attr("opacity", DEFAULT_POINT_OPACITY);
+    applyCircleRadius(circles, POINT_RADIUS, resolvePointSizeScale(container));
     centroidCircles.attr("opacity", DEFAULT_CENTROID_OPACITY);
     currentSelection = null;
   };
@@ -549,8 +633,12 @@ function createSelectionController(points, clusters, centroids, circles, centroi
     circles.filter((p) => p.class_label === selected.class_label).attr("opacity", ACTIVE_POINT_OPACITY);
     circles
       .filter((p) => p.id === selected.id)
-      .attr("opacity", ACTIVE_CENTROID_OPACITY)
-      .attr("r", ACTIVE_POINT_RADIUS);
+      .attr("opacity", ACTIVE_CENTROID_OPACITY);
+    applyCircleRadius(
+      circles.filter((p) => p.id === selected.id),
+      ACTIVE_POINT_RADIUS,
+      resolvePointSizeScale(container)
+    );
     centroidCircles.attr("opacity", DIMMED_CENTROID_OPACITY);
     centroidCircles
       .filter((c) => c.label === selected.class_label)
@@ -757,6 +845,7 @@ export function renderMdsPlot({
   selectionState = null,
 }) {
   const { svg, g, innerWidth, innerHeight } = buildChart(container, clearContainer);
+  const sizeScale = resolvePointSizeScale(container);
   const { x, y } = buildScales(points, innerWidth, innerHeight, scaleDomain, useNice);
   const color = buildColorScale(points, colorDomain);
   const { pointsLayer, centroidLayer, linksLayer } = createLayers(g);
@@ -766,8 +855,8 @@ export function renderMdsPlot({
 
   renderAxes(g, x, y, innerWidth, innerHeight);
 
-  const circles = renderPoints(pointsLayer, points, x, y, color);
-  const centroidCircles = renderCentroids(centroidLayer, centroids, x, y, color);
+  const circles = renderPoints(pointsLayer, points, x, y, color, sizeScale);
+  const centroidCircles = renderCentroids(centroidLayer, centroids, x, y, color, sizeScale);
   applyCentroidVisibility(centroidLayer, showCentroids);
   renderLegend(
     container,
@@ -785,7 +874,8 @@ export function renderMdsPlot({
     centroidCircles,
     linksLayer,
     x,
-    y
+    y,
+    container
   );
 
   bindSelectionEvents(svg, circles, centroidCircles, selectionController, selectionState);
@@ -829,6 +919,7 @@ export async function animateMdsPlotInterpolation({
   const stepCount = Math.max(1, Number(interpolationSteps) || 1);
   const initialPoints = interpolatePoints(fromPoints, toPoints, 0);
   const { svg, g, innerWidth, innerHeight } = buildChart(container, clearContainer);
+  const sizeScale = resolvePointSizeScale(container);
   const resolvedFromScaleDomain = fromScaleDomain ?? computeMdsScaleDomain(fromPoints);
   const resolvedToScaleDomain = toScaleDomain ?? computeMdsScaleDomain(toPoints);
   const { x, y } = buildScales(
@@ -859,9 +950,9 @@ export async function animateMdsPlotInterpolation({
     .join("circle")
     .attr("cx", (point) => x(point.x))
     .attr("cy", (point) => y(point.y))
-    .attr("r", POINT_RADIUS)
     .attr("fill", (point) => color(getPointColorLabel(point)))
     .attr("opacity", DEFAULT_POINT_OPACITY);
+  applyCircleRadius(circles, POINT_RADIUS, sizeScale);
   circles.append("title").text((point) => `id: ${point.id}, cluster: ${point.class_label}`);
 
   const initialCentroids = buildClusterData(initialPoints).centroids;
@@ -871,15 +962,15 @@ export async function animateMdsPlotInterpolation({
     .join("circle")
     .attr("cx", (centroid) => x(centroid.x))
     .attr("cy", (centroid) => y(centroid.y))
-    .attr("r", CENTROID_RADIUS)
     .attr("fill", (centroid) => color(centroid.colorLabel))
     .attr("stroke", "#ffffff")
-    .attr("stroke-width", 1.5)
+    .attr("stroke-width", 1.5 * sizeScale)
     .attr("opacity", DEFAULT_CENTROID_OPACITY);
+  applyCircleRadius(centroidCircles, CENTROID_RADIUS, sizeScale);
 
   applyCentroidVisibility(centroidLayer, showCentroids);
   let frameSelection = resolveFrameSelection(initialPoints, initialCentroids, selectionState);
-  applyAnimatedSelectionStyles(circles, centroidCircles, frameSelection);
+  applyAnimatedSelectionStyles(circles, centroidCircles, frameSelection, sizeScale);
   renderSelectionLinks(linksLayer, frameSelection, x, y);
 
   for (let stepIndex = 1; stepIndex <= stepCount; stepIndex += 1) {
@@ -903,27 +994,28 @@ export async function animateMdsPlotInterpolation({
       useNice
     );
 
+    const frameSizeScale = resolvePointSizeScale(container);
     circles = pointGroup
       .selectAll("circle")
       .data(framePoints, (point) => point.id)
       .join("circle")
-      .attr("r", POINT_RADIUS)
       .attr("fill", (point) => color(getPointColorLabel(point)))
       .attr("opacity", DEFAULT_POINT_OPACITY);
+    applyCircleRadius(circles, POINT_RADIUS, frameSizeScale);
     circles.select("title").text((point) => `id: ${point.id}, cluster: ${point.class_label}`);
 
     centroidCircles = centroidLayer
       .selectAll("circle")
       .data(frameCentroids, (centroid) => centroid.label)
       .join("circle")
-      .attr("r", CENTROID_RADIUS)
       .attr("fill", (centroid) => color(centroid.colorLabel))
       .attr("stroke", "#ffffff")
-      .attr("stroke-width", 1.5)
+      .attr("stroke-width", 1.5 * frameSizeScale)
       .attr("opacity", DEFAULT_CENTROID_OPACITY);
+    applyCircleRadius(centroidCircles, CENTROID_RADIUS, frameSizeScale);
 
     frameSelection = resolveFrameSelection(framePoints, frameCentroids, selectionState);
-    applyAnimatedSelectionStyles(circles, centroidCircles, frameSelection);
+    applyAnimatedSelectionStyles(circles, centroidCircles, frameSelection, frameSizeScale);
     const linkTransition = renderSelectionLinks(
       linksLayer,
       frameSelection,

@@ -1,9 +1,20 @@
+const DATASET_KEY = "dataset";
+const CLUSTER_ATTR_KEY = "cluster_attr";
+
+function setStorageValue(key, value) {
+  if (value) {
+    localStorage.setItem(key, value);
+    return;
+  }
+  localStorage.removeItem(key);
+}
+
 export function getCurrentDataset() {
-  return localStorage.getItem("dataset");
+  return localStorage.getItem(DATASET_KEY);
 }
 
 export function getCurrentClusterAttr() {
-  return localStorage.getItem("cluster_attr");
+  return localStorage.getItem(CLUSTER_ATTR_KEY);
 }
 
 export function getCurrentContext() {
@@ -14,19 +25,11 @@ export function getCurrentContext() {
 }
 
 export function setCurrentDataset(dataset) {
-  if (dataset) {
-    localStorage.setItem("dataset", dataset);
-    return;
-  }
-  localStorage.removeItem("dataset");
+  setStorageValue(DATASET_KEY, dataset);
 }
 
 export function setCurrentClusterAttr(clusterAttr) {
-  if (clusterAttr) {
-    localStorage.setItem("cluster_attr", clusterAttr);
-    return;
-  }
-  localStorage.removeItem("cluster_attr");
+  setStorageValue(CLUSTER_ATTR_KEY, clusterAttr);
 }
 
 export function setCurrentContext({ dataset, clusterAttr }) {
@@ -35,6 +38,6 @@ export function setCurrentContext({ dataset, clusterAttr }) {
 }
 
 export function clearCurrentContext() {
-  localStorage.removeItem("dataset");
-  localStorage.removeItem("cluster_attr");
+  localStorage.removeItem(DATASET_KEY);
+  localStorage.removeItem(CLUSTER_ATTR_KEY);
 }

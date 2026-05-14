@@ -1,25 +1,24 @@
 import { configurationMatchesContext, getConfigurationByIdSync } from "./config-store";
 import { getCurrentContext } from "./app-context";
 
-const state = {
-  activeSilhouetteView: "labelBased",
-  displayedConfigurationId: null,
-  starTarget: null,
-  lineSelectionIds: {
-    labelBased: null,
-    kmeans: null,
-  },
-  starAssignmentsByView: {
-    labelBased: {
-      "star-graph-1": null,
-      "star-graph-2": null,
-    },
-    kmeans: {
-      "star-graph-1": null,
-      "star-graph-2": null,
-    },
-  },
-};
+const VIEW_KEYS = ["labelBased", "kmeans"];
+const STAR_TARGETS = ["star-graph-1", "star-graph-2"];
+
+function mapKeys(keys, valueFactory) {
+  return Object.fromEntries(keys.map((key) => [key, valueFactory(key)]));
+}
+
+function createInitialState() {
+  return {
+    activeSilhouetteView: "labelBased",
+    displayedConfigurationId: null,
+    starTarget: null,
+    lineSelectionIds: mapKeys(VIEW_KEYS, () => null),
+    starAssignmentsByView: mapKeys(VIEW_KEYS, () => mapKeys(STAR_TARGETS, () => null)),
+  };
+}
+
+let state = createInitialState();
 
 function getAssignments(view = state.activeSilhouetteView) {
   return state.starAssignmentsByView[view] || state.starAssignmentsByView.labelBased;
@@ -133,21 +132,5 @@ export function clearAssignmentsIfMissing(validIds) {
 }
 
 export function resetConfigurationSelectionState() {
-  state.activeSilhouetteView = "labelBased";
-  state.displayedConfigurationId = null;
-  state.starTarget = null;
-  state.lineSelectionIds = {
-    labelBased: null,
-    kmeans: null,
-  };
-  state.starAssignmentsByView = {
-    labelBased: {
-      "star-graph-1": null,
-      "star-graph-2": null,
-    },
-    kmeans: {
-      "star-graph-1": null,
-      "star-graph-2": null,
-    },
-  };
+  state = createInitialState();
 }

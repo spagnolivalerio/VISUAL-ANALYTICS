@@ -358,6 +358,54 @@ label {
   font-size: 12px;
 }
 
+.plot-size-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-height);
+  padding: 0 6px 0 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.plot-size-control input {
+  width: 122px;
+  accent-color: var(--brand);
+}
+
+.saved-plot-controls {
+  min-width: 0;
+}
+
+.point-size-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--brand);
+  cursor: pointer;
+}
+
+.point-size-reset-btn:hover {
+  background: #f0f4f9;
+}
+
+.point-size-reset-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
 .plot-control-btn {
   min-width: var(--control-height);
   padding: 0;
