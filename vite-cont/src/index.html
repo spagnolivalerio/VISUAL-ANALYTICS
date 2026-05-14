@@ -22,7 +22,7 @@
           <ul id="datasets-list"></ul>
         </div>
 
-        <div class="sidebar-section">
+        <div id="sidebar-attributes-section" class="sidebar-section">
           <h3>Attributes</h3>
           <ul id="attributes-list"></ul>
         </div>
@@ -49,27 +49,41 @@
             <span>Menu</span>
           </button>
           <div class="top-bar-heading">
-            <p class="top-bar-eyebrow">Visual Analytics Workspace</p>
-            <h1>MDS Control Room</h1>
+            <h1 id="topbar-title">Cluster view</h1>
           </div>
         </div>
+        <div class="view-tabs" aria-label="Workspace views">
+          <button
+            class="view-tab-btn"
+            type="button"
+            data-tab-target="cluster-view"
+            aria-selected="true"
+          >
+            Cluster view
+          </button>
+          <button
+            class="view-tab-btn"
+            type="button"
+            data-tab-target="projection-view"
+            aria-selected="false"
+          >
+            Interactive view
+          </button>
+        </div>
         <div class="top-bar-content">
-          <div class="top-bar-status" id="topbar-status" aria-live="polite">
-            Dashboard synchronized with the current dataset context.
-          </div>
           <div class="top-bar-meta">
-            <span class="top-bar-badge-label">Dataset</span>
+            <span id="topbar-dataset-label" class="top-bar-badge-label">Dataset</span>
             <span class="top-bar-badge" id="topbar-dataset">No dataset</span>
-            <span class="top-bar-badge-label">Attribute</span>
+            <span id="topbar-attribute-label" class="top-bar-badge-label">Attribute</span>
             <span class="top-bar-badge" id="topbar-attribute">No attribute</span>
           </div>
-          <div class="top-bar-actions">
+          <div id="topbar-actions" class="top-bar-actions">
             <button id="refresh-dashboard-btn" class="top-bar-btn" type="button">Reset View</button>
           </div>
         </div>
       </div>
 
-      <div class="page-content">
+      <div id="cluster-view" class="page-content tab-panel">
         <section class="top-row" aria-label="Clustering, MDS plots and weights">
           <article class="panel-card plot-card current-kmeans-card">
             <div class="panel-header plot-title-row">
@@ -206,7 +220,6 @@
                     </svg>
                   </button>
                 </label>
-                <span id="saved-config-view-1" class="saved-config-view">Label based view</span>
               </div>
             </div>
             <div id="saved-config-container-1" class="plot-container compact-plot-container"></div>
@@ -235,7 +248,6 @@
                     </svg>
                   </button>
                 </label>
-                <span id="saved-config-view-2" class="saved-config-view">Label based view</span>
               </div>
             </div>
             <div id="saved-config-container-2" class="plot-container compact-plot-container"></div>
@@ -278,7 +290,6 @@
                 </button>
               </div>
 
-              <p id="nonprop-status" class="weights-status"></p>
               <div id="weights-list" class="weights-list"></div>
             </aside>
           </article>
@@ -358,6 +369,98 @@
               </div>
             </div>
           </div>
+        </section>
+      </div>
+
+      <div id="projection-view" class="page-content projection-page tab-panel" hidden>
+        <section class="projection-row" aria-label="Interactive weighted MDS projection">
+          <article class="panel-card plot-card projection-left-card">
+            <div class="panel-header plot-title-row">
+              <div>
+                <h2>Unweighted MDS</h2>
+              </div>
+              <label class="plot-size-control" for="point-size-projection-base">
+                <span>Point size</span>
+                <input
+                  id="point-size-projection-base"
+                  type="range"
+                  aria-label="Unweighted projection point size"
+                />
+                <button
+                  id="reset-point-size-projection-base"
+                  type="button"
+                  class="point-size-reset-btn"
+                  aria-label="Reset unweighted projection point size"
+                  title="Reset point size"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M4 12a8 8 0 0 1 13.66-5.66L20 4v6h-6l2.47-2.47A6 6 0 1 0 18 12h2a8 8 0 0 1-16 0z"
+                    />
+                  </svg>
+                </button>
+              </label>
+            </div>
+            <div id="projection-base-container" class="plot-container"></div>
+          </article>
+
+          <article class="panel-card plot-card projection-weighted-card">
+            <div class="panel-header plot-title-row">
+              <div>
+                <h2>Weighted MDS</h2>
+              </div>
+              <label class="plot-size-control" for="point-size-projection-weighted">
+                <span>Point size</span>
+                <input
+                  id="point-size-projection-weighted"
+                  type="range"
+                  aria-label="Weighted projection point size"
+                />
+                <button
+                  id="reset-point-size-projection-weighted"
+                  type="button"
+                  class="point-size-reset-btn"
+                  aria-label="Reset weighted projection point size"
+                  title="Reset point size"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M4 12a8 8 0 0 1 13.66-5.66L20 4v6h-6l2.47-2.47A6 6 0 1 0 18 12h2a8 8 0 0 1-16 0z"
+                    />
+                  </svg>
+                </button>
+              </label>
+            </div>
+            <div id="projection-weighted-container" class="plot-container"></div>
+          </article>
+
+          <article class="panel-card weights-card projection-weights-card">
+            <div class="panel-header">
+              <div class="weights-header-block">
+                <h2 class="weights-header">Projection Controls</h2>
+              </div>
+            </div>
+
+            <aside class="weights-panel projection-weights-panel">
+              <div class="weights-actions projection-weights-actions">
+                <button
+                  id="reset-projection-weights-btn"
+                  type="button"
+                  class="reset-weights-btn"
+                  aria-label="Reset projection weights"
+                  title="Reset weights"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M4 12a8 8 0 0 1 13.66-5.66L20 4v6h-6l2.47-2.47A6 6 0 1 0 18 12h2a8 8 0 0 1-16 0z"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              <div id="projection-weights-list" class="weights-list"></div>
+            </aside>
+          </article>
         </section>
       </div>
     </main>

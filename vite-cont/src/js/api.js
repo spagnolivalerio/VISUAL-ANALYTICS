@@ -40,6 +40,10 @@ export function requestNumericAttributes(dataset, clusterAttr) {
   return postJson("/api/numeric-attributes", buildDatasetPayload(dataset, clusterAttr));
 }
 
+export function requestProjectionNumericAttributes(dataset) {
+  return postJson("/api/projection-numeric-attributes", buildDatasetPayload(dataset));
+}
+
 export function requestKMeans(dataset, clusterAttr, weights = null) {
   const payload = buildDatasetPayload(dataset, clusterAttr);
   if (weights) payload.weights = weights;
@@ -50,4 +54,10 @@ export function requestNonPropMds(weights, dataset, clusterAttr) {
   const payload = buildDatasetPayload(dataset, clusterAttr);
   if (weights) payload.weights = weights;
   return postJson("/api/mds-nonprop", payload);
+}
+
+export function requestMdsProjection(dataset, weights = null) {
+  const payload = buildDatasetPayload(dataset);
+  if (weights) payload.weights = weights;
+  return postJson("/api/mds-projection", payload);
 }

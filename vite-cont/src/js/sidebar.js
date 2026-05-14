@@ -1,5 +1,6 @@
 import { parseJsonResponse, requestAllAttributes, requestDatasets } from "./api";
 import { getCurrentContext, setCurrentContext } from "./app-context";
+import { getProjectionDataset, setProjectionDataset } from "./projection-view";
 
 const sidebar = document.getElementById("app-sidebar");
 const toggle = document.querySelector(".sidebar-toggle");
@@ -7,6 +8,7 @@ const closeBtn = document.querySelector(".sidebar-close");
 const backdrop = document.querySelector(".sidebar-backdrop");
 const datasetsList = document.getElementById("datasets-list");
 const attributesList = document.getElementById("attributes-list");
+const attributesSection = document.getElementById("sidebar-attributes-section");
 
 const ATTRIBUTES_LOADING_LABEL = "Loading attributes...";
 const ATTRIBUTES_ERROR_LABEL = "Unable to load attributes";
@@ -18,6 +20,24 @@ const DATASETS_ERROR_LABEL = "Unable to load datasets";
 let availableDatasets = [];
 let availableAttributes = [];
 let onContextChangeHandler = null;
+
+function getActiveView() {
+  return document.querySelector(".view-tab-btn[aria-selected='true']")?.dataset.tabTarget || "cluster-view";
+}
+
+function isProjectionViewActive() {
+  return getActiveView() === "projection-view";
+}
+
+function syncSidebarMode() {
+  const projectionMode = isProjectionViewActive();
+  if (attributesSection) {
+    attributesSection.hidden = projectionMode;
+  }
+  if (projectionMode && attributesList) {
+    attributesList.innerHTML = "";
+  }
+}
 
 function createListItem({ label, onClick = null, isSelected = false, disabled = false }) {
   const li = document.createElement("li");
@@ -50,7 +70,11 @@ function renderList(listElement, items, emptyLabel, getItemConfig) {
   });
 }
 
-function renderDatasets(items, selectedDataset = getCurrentContext().dataset, disabled = false) {
+function renderDatasets(
+  items,
+  selectedDataset = isProjectionViewActive() ? getProjectionDataset() : getCurrentContext().dataset,
+  disabled = false
+) {
   renderList(datasetsList, items, NO_DATASETS_LABEL, (name) => ({
     label: name,
     onClick: () => handleDatasetSelection(name),
@@ -117,6 +141,14 @@ async function handleAttributeSelection(name) {
 }
 
 async function handleDatasetSelection(name) {
+  if (isProjectionViewActive()) {
+    renderDatasets(availableDatasets, name);
+    closeSidebar();
+    await setProjectionDataset(name);
+    await notifyContextChange();
+    return;
+  }
+
   const previousContext = getCurrentContext();
   const previousAttributes = [...availableAttributes];
   setCurrentContext({ dataset: name, clusterAttr: null });
@@ -189,9 +221,10 @@ function initSidebarToggle() {
   toggle.dataset.bound = "true";
 }
 
-export async function initSidebar({ onContextChange } = {}) {
+export async function initSidebar({ onContextChange, preserveEmptyContext = false } = {}) {
   onContextChangeHandler = onContextChange || null;
   initSidebarToggle();
+  syncSidebarMode();
 
   if (!datasetsList || !attributesList) {
     return getCurrentContext();
@@ -199,14 +232,39 @@ export async function initSidebar({ onContextChange } = {}) {
 
   datasetsList.innerHTML = "";
   datasetsList.appendChild(createListItem({ label: DATASETS_LOADING_LABEL, disabled: true }));
-  attributesList.innerHTML = "";
-  attributesList.appendChild(createListItem({ label: ATTRIBUTES_LOADING_LABEL, disabled: true }));
+  if (!isProjectionViewActive()) {
+    attributesList.innerHTML = "";
+    attributesList.appendChild(createListItem({ label: ATTRIBUTES_LOADING_LABEL, disabled: true }));
+  }
 
   try {
     availableDatasets = await fetchDatasets();
+    if (isProjectionViewActive()) {
+      if (preserveEmptyContext && !getProjectionDataset()) {
+        renderDatasets(availableDatasets, null);
+        renderAttributes([], null, true);
+        return { dataset: null, clusterAttr: null };
+      }
+
+      const dataset = getResolvedDataset(availableDatasets, getProjectionDataset());
+      if (dataset && dataset !== getProjectionDataset()) {
+        await setProjectionDataset(dataset, { run: false });
+      }
+      renderDatasets(availableDatasets, dataset);
+      renderAttributes([], null, true);
+      return { dataset, clusterAttr: null };
+    }
+
     renderDatasets(availableDatasets);
 
     const currentContext = getCurrentContext();
+    if (preserveEmptyContext && !currentContext.dataset) {
+      setCurrentContext({ dataset: null, clusterAttr: null });
+      renderDatasets(availableDatasets, null);
+      renderAttributes([], null, true);
+      return getCurrentContext();
+    }
+
     const dataset = getResolvedDataset(availableDatasets, currentContext.dataset);
     if (!dataset) {
       setCurrentContext({ dataset: null, clusterAttr: null });

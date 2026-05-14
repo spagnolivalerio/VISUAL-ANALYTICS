@@ -83,6 +83,9 @@ function updatePlotPointSizes(container) {
 }
 
 export function configurePointSizeSlider(container, slider, resetButton = null) {
+  if (!container) {
+    return;
+  }
   container.dataset.pointSizeScale = String(resolvePointSizeScale(container));
   if (!slider) {
     return;
@@ -311,6 +314,135 @@ function renderCentroids(centroidLayer, centroids, x, y, color, sizeScale) {
   applyCircleRadius(centroidCircles, CENTROID_RADIUS, sizeScale);
   centroidCircles.append("title").text((d) => `centroid: ${d.label}`);
   return centroidCircles;
+}
+
+export function renderPlainMdsPlot({
+  container,
+  points,
+  clearContainer = (node) => (node.innerHTML = ""),
+  scaleDomain = null,
+  useNice = true,
+  pointColor = "#1f6feb",
+}) {
+  const { g, innerWidth, innerHeight } = buildChart(container, clearContainer);
+  const sizeScale = resolvePointSizeScale(container);
+  const { x, y } = buildScales(points, innerWidth, innerHeight, scaleDomain, useNice);
+
+  renderAxes(g, x, y, innerWidth, innerHeight);
+
+  const circles = g
+    .append("g")
+    .attr("class", "projection-points")
+    .selectAll("circle")
+    .data(points, (point) => point.id)
+    .join("circle")
+    .attr("cx", (point) => x(point.x))
+    .attr("cy", (point) => y(point.y))
+    .attr("fill", pointColor)
+    .attr("opacity", DEFAULT_POINT_OPACITY);
+
+  applyCircleRadius(circles, POINT_RADIUS, sizeScale);
+  circles.append("title").text((point) => `id: ${point.id}`);
+}
+
+export async function animatePlainMdsPlotInterpolation({
+  container,
+  fromPoints,
+  toPoints,
+  clearContainer = (node) => (node.innerHTML = ""),
+  fromScaleDomain = null,
+  toScaleDomain = null,
+  useNice = false,
+  pointColor = "#1f6feb",
+  interpolationSteps = 4,
+  frameDuration = DEFAULT_ANIMATION_FRAME_DURATION,
+  shouldContinue = null,
+}) {
+  if (!container || !Array.isArray(fromPoints) || !Array.isArray(toPoints) || !toPoints.length) {
+    return false;
+  }
+
+  const stepCount = Math.max(1, Number(interpolationSteps) || 1);
+  const initialPoints = interpolatePoints(fromPoints, toPoints, 0);
+  const { g, innerWidth, innerHeight } = buildChart(container, clearContainer);
+  const sizeScale = resolvePointSizeScale(container);
+  const resolvedFromScaleDomain = fromScaleDomain ?? computeMdsScaleDomain(fromPoints);
+  const resolvedToScaleDomain = toScaleDomain ?? computeMdsScaleDomain(toPoints);
+  const { x, y } = buildScales(
+    initialPoints,
+    innerWidth,
+    innerHeight,
+    resolvedFromScaleDomain,
+    useNice
+  );
+  const { xAxisGroup, yAxisGroup } = renderAxes(g, x, y, innerWidth, innerHeight);
+
+  const pointGroup = g.append("g").attr("class", "projection-points");
+  let circles = pointGroup
+    .selectAll("circle")
+    .data(initialPoints, (point) => point.id)
+    .join("circle")
+    .attr("cx", (point) => x(point.x))
+    .attr("cy", (point) => y(point.y))
+    .attr("fill", pointColor)
+    .attr("opacity", DEFAULT_POINT_OPACITY);
+  applyCircleRadius(circles, POINT_RADIUS, sizeScale);
+  circles.append("title").text((point) => `id: ${point.id}`);
+
+  for (let stepIndex = 1; stepIndex <= stepCount; stepIndex += 1) {
+    if (typeof shouldContinue === "function" && !shouldContinue()) {
+      return false;
+    }
+
+    const ratio = stepIndex / stepCount;
+    const framePoints = interpolatePoints(fromPoints, toPoints, ratio);
+    const frameScaleDomain = interpolateScaleDomain(
+      resolvedFromScaleDomain,
+      resolvedToScaleDomain,
+      ratio
+    );
+    const frameScales = buildScales(
+      framePoints,
+      innerWidth,
+      innerHeight,
+      frameScaleDomain,
+      useNice
+    );
+    const frameSizeScale = resolvePointSizeScale(container);
+
+    circles = pointGroup
+      .selectAll("circle")
+      .data(framePoints, (point) => point.id)
+      .join("circle")
+      .attr("fill", pointColor)
+      .attr("opacity", DEFAULT_POINT_OPACITY);
+    applyCircleRadius(circles, POINT_RADIUS, frameSizeScale);
+    circles.select("title").text((point) => `id: ${point.id}`);
+
+    try {
+      const xAxisTransition = xAxisGroup.transition().duration(frameDuration).ease(d3.easeLinear);
+      xAxisTransition.call(d3.axisBottom(frameScales.x));
+
+      const yAxisTransition = yAxisGroup.transition().duration(frameDuration).ease(d3.easeLinear);
+      yAxisTransition.call(d3.axisLeft(frameScales.y));
+
+      await Promise.all([
+        circles
+          .transition()
+          .duration(frameDuration)
+          .ease(d3.easeLinear)
+          .attr("cx", (point) => frameScales.x(point.x))
+          .attr("cy", (point) => frameScales.y(point.y))
+          .end(),
+        xAxisTransition.end(),
+        yAxisTransition.end(),
+      ]);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function applyCentroidVisibility(centroidLayer, showCentroids) {

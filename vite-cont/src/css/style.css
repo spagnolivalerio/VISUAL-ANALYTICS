@@ -21,7 +21,7 @@
   --danger: #dc4c43;
   --warning: #d7921f;
   --surface: #eef3f8;
-  --top-bar-height: 84px;
+  --top-bar-height: 72px;
   --panel-header-gap: 8px;
   --control-height: 32px;
 }
@@ -74,10 +74,11 @@ label {
 .top-bar {
   height: var(--top-bar-height);
   flex: 0 0 var(--top-bar-height);
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr);
   align-items: stretch;
   gap: 12px;
-  padding: 12px 16px;
+  padding: 8px 14px;
   border: var(--panel-border);
   border-radius: var(--panel-radius);
   background: rgba(255, 255, 255, 0.82);
@@ -96,45 +97,26 @@ label {
   min-width: 0;
 }
 
-.top-bar-eyebrow {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--brand-strong);
-}
-
 .top-bar-heading h1 {
-  font-size: 25px;
+  font-size: 22px;
   line-height: 1.1;
 }
 
 .top-bar-content {
+  justify-self: end;
   flex: 1 1 auto;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) auto auto;
+  grid-template-columns: auto auto;
   align-items: center;
   gap: 12px;
-}
-
-.top-bar-status {
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border-soft);
-  border-radius: 12px;
-  background: var(--panel-muted-bg);
-  font-size: 12px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .top-bar-meta,
 .top-bar-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -213,6 +195,35 @@ label {
   box-shadow: none;
 }
 
+.view-tabs {
+  display: flex;
+  align-self: center;
+  justify-self: center;
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.view-tab-btn {
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.view-tab-btn[aria-selected="true"] {
+  background: var(--brand);
+  color: #ffffff;
+  box-shadow: 0 7px 16px rgba(31, 111, 235, 0.18);
+}
+
 .page-content {
   flex: 1 1 auto;
   min-height: 0;
@@ -221,8 +232,13 @@ label {
   gap: var(--row-gap);
 }
 
+.tab-panel[hidden] {
+  display: none;
+}
+
 .top-row,
-.bottom-row {
+.bottom-row,
+.projection-row {
   min-width: 0;
   min-height: 0;
   display: grid;
@@ -239,6 +255,15 @@ label {
 
 .bottom-row {
   grid-template-columns: minmax(0, 1.48fr) minmax(210px, 0.76fr) minmax(210px, 0.76fr);
+}
+
+.projection-page {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.projection-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 290px;
+  grid-template-areas: "projection-base projection-weighted projection-weights";
 }
 
 .panel-card,
@@ -297,6 +322,18 @@ label {
 .weights-card {
   min-width: 0;
   grid-area: weights;
+}
+
+.projection-left-card {
+  grid-area: projection-base;
+}
+
+.projection-weighted-card {
+  grid-area: projection-weighted;
+}
+
+.projection-weights-card {
+  grid-area: projection-weights;
 }
 
 .weights-card .panel-header {
@@ -542,6 +579,15 @@ label {
 
 .weights-actions button {
   border: 0;
+}
+
+.projection-weights-actions {
+  grid-template-columns: 1fr;
+  justify-content: center;
+}
+
+.projection-weights-actions .reset-weights-btn {
+  width: 100%;
 }
 
 .run-mds-btn,
@@ -955,7 +1001,7 @@ label {
 
 @media (max-width: 1520px) {
   :root {
-    --top-bar-height: 78px;
+    --top-bar-height: 70px;
   }
 
   .top-row {
@@ -963,12 +1009,20 @@ label {
     grid-template-rows: repeat(2, minmax(0, 1fr));
   }
 
+  .projection-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 0.72fr);
+    grid-template-areas:
+      "projection-base projection-weighted"
+      "projection-weights projection-weights";
+  }
+
   .bottom-row {
     grid-template-columns: minmax(0, 1.34fr) minmax(196px, 0.72fr) minmax(196px, 0.72fr);
   }
 
   .top-bar-content {
-    grid-template-columns: minmax(180px, 1fr) auto auto;
+    grid-template-columns: auto auto;
   }
 
   .top-bar-badge {
@@ -992,7 +1046,7 @@ label {
   }
 
   .top-bar-content {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr auto;
   }
 
   .top-bar-meta,
@@ -1007,6 +1061,15 @@ label {
       "kmeans label"
       "saved-a saved-b"
       "weights weights";
+  }
+
+  .projection-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(3, minmax(0, auto));
+    grid-template-areas:
+      "projection-base"
+      "projection-weighted"
+      "projection-weights";
   }
 
   .bottom-row {

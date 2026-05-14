@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import numpy as np
@@ -21,51 +20,25 @@ WINE_PATH = DATA_PATH / "wine.csv"
 app = Flask(__name__)
 
 
-def get_available_cpu_count():
-    try:
-        return max(1, len(os.sched_getaffinity(0)))
-    except AttributeError:
-        return max(1, os.cpu_count() or 1)
-
-
-def resolve_mds_n_jobs():
-    raw_value = os.getenv("MDS_N_JOBS")
-    if raw_value:
-        try:
-            return max(1, int(raw_value))
-        except ValueError:
-            pass
-
-    return max(1, min(MDS_N_INIT, get_available_cpu_count()))
-
-
-MDS_N_JOBS = resolve_mds_n_jobs()
-
-
 def create_mds(**kwargs):
     base_kwargs = {
         "n_init": MDS_N_INIT,
         "init": "random",
         "n_components": 2,
         "random_state": SEED,
-        "n_jobs": MDS_N_JOBS,
         **kwargs,
     }
-    fallback_kwargs = dict(base_kwargs)
-    fallback_kwargs.pop("n_jobs", None)
 
     for candidate_kwargs in (
         {"normalized_stress": "auto", **base_kwargs},
         base_kwargs,
-        {"normalized_stress": "auto", **fallback_kwargs},
-        fallback_kwargs,
     ):
         try:
             return MDS(**candidate_kwargs)
         except TypeError:
             continue
 
-    return MDS(**fallback_kwargs)
+    return MDS(**base_kwargs)
 
 
 def create_metric_mds():
@@ -139,7 +112,7 @@ def resolve_cluster_attr(df, requested_cluster_attr=None):
     return requested_cluster_attr
 
 
-def get_numeric_feature_columns(df, cluster_attr):
+def get_numeric_feature_columns(df, cluster_attr=None):
     if df.empty:
         raise ValueError("Dataset is empty")
 
@@ -176,6 +149,14 @@ def load_numeric_dataset_context(payload):
     return df, cluster_attr, numeric_features, attributes
 
 
+def load_projection_dataset_context(payload):
+    context = resolve_request_context(payload)
+    df = load_dataframe(context["dataset"])
+    attributes = get_numeric_feature_columns(df)
+    numeric_features = df[attributes].apply(pd.to_numeric, errors="coerce")
+    return df, numeric_features, attributes
+
+
 def build_points(embedding, label_values):
     return [
         {
@@ -193,6 +174,17 @@ def build_points_with_color_labels(embedding, label_values, color_label_values):
     for index, point in enumerate(points):
         point["color_label"] = color_label_values[index]
     return points
+
+
+def build_plain_points(embedding):
+    return [
+        {
+            "id": int(index + 1),
+            "x": float(embedding[index, 0]),
+            "y": float(embedding[index, 1]),
+        }
+        for index in range(len(embedding))
+    ]
 
 
 def build_kmeans_legend_labels(k_value):
@@ -489,6 +481,20 @@ def numeric_attributes():
     return jsonify(numeric_attributes=numeric_attributes, cluster_attr=cluster_attr), 200
 
 
+@app.post("/projection-numeric-attributes")
+def projection_numeric_attributes():
+    payload = get_request_payload()
+
+    try:
+        _, _, attributes = load_projection_dataset_context(payload)
+    except FileNotFoundError as exc:
+        return bad_request(str(exc))
+    except ValueError as exc:
+        return bad_request(str(exc))
+
+    return jsonify(numeric_attributes=attributes), 200
+
+
 @app.post("/all_attributes")
 def get_attributes():
     payload = get_request_payload()
@@ -501,6 +507,38 @@ def get_attributes():
         return bad_request(str(exc))
 
     return jsonify(attributes=df.columns.tolist(), cluster_attr=cluster_attr), 200
+
+
+@app.post("/mds-projection")
+def mds_projection():
+    payload = get_request_payload()
+    weights_payload = payload.get("weights")
+    attributes = []
+
+    try:
+        _, numeric_features, attributes = load_projection_dataset_context(payload)
+        weights = parse_weights(weights_payload, attributes) if weights_payload is not None else None
+    except FileNotFoundError as exc:
+        return bad_request(str(exc))
+    except ValueError as exc:
+        if "weights" in str(exc) or "Missing weight" in str(exc):
+            return bad_request(str(exc), {"expected_attributes": attributes})
+        return bad_request(str(exc))
+
+    scaled = scale_features(numeric_features.to_numpy())
+    if weights is None:
+        mds, embedding = project_metric_mds(scaled)
+    else:
+        mds, embedding = project_weighted_mds(scaled, weights)
+
+    return jsonify(
+        {
+            "count": int(len(embedding)),
+            "stress": float(mds.stress_),
+            "attributes": attributes,
+            "points": build_plain_points(embedding),
+        }
+    ), 200
 
 
 @app.post("/mds-nonprop")

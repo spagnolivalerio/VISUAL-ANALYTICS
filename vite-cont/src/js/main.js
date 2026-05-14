@@ -8,6 +8,12 @@ import { resetConfigurations } from "./config-store";
 import { initConfigurationSync } from "./configuration-sync";
 import { initKMeansView, resetKMeansView } from "./kmeans-view";
 import { initNonPropMds, resetNonPropMds } from "./mds-nonprop";
+import {
+  activateProjectionView,
+  getProjectionDataset,
+  initProjectionView,
+  resetProjectionView,
+} from "./projection-view";
 import { renderSavedScatterPlots } from "./saved-scatter-plots";
 import { renderSilhouetteChart } from "./silhouette-chart";
 import { initSidebar } from "./sidebar";
@@ -16,7 +22,7 @@ import { renderWeightsPanel, resetWeightsPanel } from "./weights-panel";
 
 const DATASET_BADGE_ID = "topbar-dataset";
 const ATTRIBUTE_BADGE_ID = "topbar-attribute";
-const STATUS_TEXT_ID = "topbar-status";
+const TITLE_ID = "topbar-title";
 const REFRESH_BUTTON_ID = "refresh-dashboard-btn";
 const RESET_BUTTON_ID = "reset-weights-btn";
 
@@ -36,29 +42,82 @@ function updateBadge(id, value, emptyLabel) {
   element.dataset.empty = value ? "false" : "true";
 }
 
-function setTopBarStatus(message) {
-  const status = document.getElementById(STATUS_TEXT_ID);
-  if (status) {
-    status.textContent = message;
+function getActiveView() {
+  return document.querySelector(".view-tab-btn[aria-selected='true']")?.dataset.tabTarget || "cluster-view";
+}
+
+function setElementHidden(id, hidden) {
+  const element = document.getElementById(id);
+  if (element) {
+    element.hidden = hidden;
   }
 }
 
 function updateTopBarContext() {
+  const title = document.getElementById(TITLE_ID);
+  const activeView = getActiveView();
+  if (activeView === "projection-view") {
+    const dataset = getProjectionDataset();
+    if (title) {
+      title.textContent = "Interactive view";
+    }
+    updateBadge(DATASET_BADGE_ID, dataset, "No dataset");
+    setElementHidden("topbar-attribute-label", true);
+    setElementHidden(ATTRIBUTE_BADGE_ID, true);
+    setElementHidden("topbar-actions", true);
+    return;
+  }
+
+  if (title) {
+    title.textContent = "Cluster view";
+  }
+  setElementHidden("topbar-attribute-label", false);
+  setElementHidden(ATTRIBUTE_BADGE_ID, false);
+  setElementHidden("topbar-actions", false);
+
   const { dataset, clusterAttr } = getCurrentContext();
   updateBadge(DATASET_BADGE_ID, dataset, "No dataset");
   updateBadge(ATTRIBUTE_BADGE_ID, clusterAttr, "No attribute");
 
   if (!dataset) {
-    setTopBarStatus("Select a dataset to start.");
     return;
   }
 
   if (!clusterAttr) {
-    setTopBarStatus("Select a cluster attribute to enable clustering views.");
     return;
   }
+}
 
-  setTopBarStatus("Dashboard synchronized with the current dataset context.");
+async function switchView(targetId) {
+  document.querySelectorAll(".view-tab-btn[data-tab-target]").forEach((button) => {
+    button.setAttribute("aria-selected", button.dataset.tabTarget === targetId ? "true" : "false");
+    if (button.dataset.tabTarget === targetId) {
+      button.focus();
+    }
+  });
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    panel.hidden = panel.id !== targetId;
+  });
+
+  await initSidebar({ onContextChange: refreshDashboard });
+  updateTopBarContext();
+  if (targetId === "projection-view") {
+    await activateProjectionView();
+  }
+}
+
+function bindViewTabs() {
+  document.querySelectorAll(".view-tab-btn[data-tab-target]").forEach((button) => {
+    if (button.dataset.bound === "true") {
+      return;
+    }
+    button.addEventListener("click", () => {
+      void switchView(button.dataset.tabTarget);
+    });
+    button.dataset.bound = "true";
+  });
+
+  window.addEventListener("projection:context", updateTopBarContext);
 }
 
 function bindRefreshButton() {
@@ -80,16 +139,16 @@ function bindRefreshButton() {
 }
 
 async function resetApplication() {
-  setTopBarStatus("Resetting application...");
   window.dispatchEvent(new CustomEvent("mds:reset"));
   resetConfigurations();
   resetConfigurationSelectionState();
   resetContinuousViewState();
   clearCurrentContext();
+  resetProjectionView();
   setSelectedStarTarget(null);
   resetKMeansView();
   resetNonPropMds();
-  await initSidebar({ onContextChange: refreshDashboard });
+  await initSidebar({ onContextChange: refreshDashboard, preserveEmptyContext: true });
   await refreshDashboard();
 }
 
@@ -113,6 +172,8 @@ function initializeModules() {
 
   initKMeansView();
   initNonPropMds();
+  void initProjectionView();
+  bindViewTabs();
   setupStarSelection();
   initConfigurationSync();
   bindRefreshButton();
@@ -121,6 +182,11 @@ function initializeModules() {
 }
 
 export async function refreshDashboard() {
+  if (getActiveView() === "projection-view") {
+    updateTopBarContext();
+    return;
+  }
+
   const { dataset, clusterAttr } = getCurrentContext();
   updateTopBarContext();
   window.dispatchEvent(new CustomEvent("mds:reset"));
@@ -129,7 +195,6 @@ export async function refreshDashboard() {
   resetNonPropMds();
 
   if (!dataset) {
-    setTopBarStatus("No dataset available.");
     await renderWeightsPanel(null, null, null);
     await renderSilhouetteChart();
     return;
