@@ -157,7 +157,7 @@ export function initKMeansView() {
   const container = getContainer();
   const toggleButton = document.getElementById("toggle-centroids-kmeans");
   const legendButton = document.getElementById("toggle-legend-kmeans");
-  const sizeSlider = document.getElementById("point-size-kmeans");
+  const sizeSlider = document.getElementById("point-size-cluster-global");
 
   if (!container || !toggleButton || !legendButton) {
     return;

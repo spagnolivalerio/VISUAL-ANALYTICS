@@ -56,6 +56,8 @@ function setElementHidden(id, hidden) {
 function updateTopBarContext() {
   const title = document.getElementById(TITLE_ID);
   const activeView = getActiveView();
+  setElementHidden("cluster-point-size-control", activeView !== "cluster-view");
+  setElementHidden("projection-point-size-control", activeView !== "projection-view");
   if (activeView === "projection-view") {
     const dataset = getProjectionDataset();
     if (title) {
@@ -64,7 +66,7 @@ function updateTopBarContext() {
     updateBadge(DATASET_BADGE_ID, dataset, "No dataset");
     setElementHidden("topbar-attribute-label", true);
     setElementHidden(ATTRIBUTE_BADGE_ID, true);
-    setElementHidden("topbar-actions", true);
+    setElementHidden("topbar-actions", false);
     return;
   }
 
@@ -129,7 +131,7 @@ function bindRefreshButton() {
   refreshButton.addEventListener("click", async () => {
     refreshButton.disabled = true;
     try {
-      await resetApplication();
+      await resetActiveView();
     } finally {
       refreshButton.disabled = false;
     }
@@ -138,13 +140,18 @@ function bindRefreshButton() {
   refreshButton.dataset.bound = "true";
 }
 
-async function resetApplication() {
+async function resetActiveView() {
+  if (getActiveView() === "projection-view") {
+    resetProjectionView();
+    updateTopBarContext();
+    return;
+  }
+
   window.dispatchEvent(new CustomEvent("mds:reset"));
   resetConfigurations();
   resetConfigurationSelectionState();
   resetContinuousViewState();
   clearCurrentContext();
-  resetProjectionView();
   setSelectedStarTarget(null);
   resetKMeansView();
   resetNonPropMds();

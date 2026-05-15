@@ -8,14 +8,12 @@ const PLOT_SPECS = [
     targetId: "star-graph-1",
     containerId: "saved-config-container-1",
     labelId: "saved-config-view-1",
-    sizeSliderId: "point-size-saved-1",
     placeholder: "Pin a configuration to Star Graph A.",
   },
   {
     targetId: "star-graph-2",
     containerId: "saved-config-container-2",
     labelId: "saved-config-view-2",
-    sizeSliderId: "point-size-saved-2",
     placeholder: "Pin a configuration to Star Graph B.",
   },
 ];
@@ -117,7 +115,7 @@ export function renderSavedScatterPlot(targetId) {
   }
 
   setViewLabel(spec, getActiveViewLabel());
-  configurePointSizeSlider(container, document.getElementById(spec.sizeSliderId));
+  configurePointSizeSlider(container, document.getElementById("point-size-cluster-global"));
   bindResizeObserver(spec, container);
 
   const config = getAssignedConfiguration(targetId, getActiveSilhouetteView());

@@ -567,7 +567,7 @@ export function initNonPropMds() {
   const runButton = getRunButton();
   const toggleButton = document.getElementById("toggle-centroids-nonprop");
   const legendButton = document.getElementById("toggle-legend-nonprop");
-  const sizeSlider = document.getElementById("point-size-nonprop");
+  const sizeSlider = document.getElementById("point-size-cluster-global");
 
   if (!container || !runButton) {
     return;

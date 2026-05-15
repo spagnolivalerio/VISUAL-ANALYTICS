@@ -16,6 +16,7 @@ const POINT_SIZE_MAX = 3;
 const POINT_SIZE_STEP = 0.1;
 const DEFAULT_ANIMATION_FRAME_DURATION = 44;
 const SELECTED_PLAIN_POINT_COLOR = "#f97316";
+const pointSizeContainersBySlider = new WeakMap();
 
 export function createSelectionState() {
   let selection = null;
@@ -87,7 +88,9 @@ export function configurePointSizeSlider(container, slider, resetButton = null) 
   if (!container) {
     return;
   }
-  container.dataset.pointSizeScale = String(resolvePointSizeScale(container));
+  container.dataset.pointSizeScale = String(
+    slider?._pointSizeInitialized ? slider.value : resolvePointSizeScale(container)
+  );
   if (!slider) {
     return;
   }
@@ -96,13 +99,26 @@ export function configurePointSizeSlider(container, slider, resetButton = null) 
   slider.min = String(POINT_SIZE_MIN);
   slider.max = String(POINT_SIZE_MAX);
   slider.step = String(POINT_SIZE_STEP);
-  slider.value = container.dataset.pointSizeScale;
+  if (!slider._pointSizeInitialized) {
+    slider.value = container.dataset.pointSizeScale;
+    slider._pointSizeInitialized = true;
+  }
+
+  if (!pointSizeContainersBySlider.has(slider)) {
+    pointSizeContainersBySlider.set(slider, new Set());
+  }
+  pointSizeContainersBySlider.get(slider).add(container);
+  container.dataset.pointSizeScale = slider.value;
+  updatePlotPointSizes(container);
+
   if (slider._pointSizeBound) {
     return;
   }
   slider.addEventListener("input", () => {
-    container.dataset.pointSizeScale = slider.value;
-    updatePlotPointSizes(container);
+    pointSizeContainersBySlider.get(slider)?.forEach((targetContainer) => {
+      targetContainer.dataset.pointSizeScale = slider.value;
+      updatePlotPointSizes(targetContainer);
+    });
   });
   slider._pointSizeBound = true;
 
@@ -112,8 +128,7 @@ export function configurePointSizeSlider(container, slider, resetButton = null) 
   resolvedResetButton.addEventListener("click", (event) => {
     event.preventDefault();
     slider.value = String(POINT_SIZE_DEFAULT);
-    container.dataset.pointSizeScale = slider.value;
-    updatePlotPointSizes(container);
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
   });
   resolvedResetButton._pointSizeResetBound = true;
 }
@@ -322,6 +337,11 @@ function isPlainPointSelected(point, selectedPointIds) {
 }
 
 function getPlainPointFill(point, selectedPointIds, pointColor) {
+  const pointSelectionColor =
+    selectedPointIds?.get?.(point.id) ?? selectedPointIds?.get?.(String(point.id));
+  if (pointSelectionColor) {
+    return pointSelectionColor;
+  }
   return isPlainPointSelected(point, selectedPointIds) ? SELECTED_PLAIN_POINT_COLOR : pointColor;
 }
 
@@ -338,7 +358,7 @@ function bindPlainPointSelection(circles, selectedPointIds, onPointToggle) {
     });
 }
 
-function bindPlainLassoSelection({ svg, g, points, x, y, onLassoSelect }) {
+function bindPlainLassoSelection({ svg, g, points, x, y, onLassoSelect, lassoColor = null }) {
   if (typeof onLassoSelect !== "function" || !svg || !g) {
     return;
   }
@@ -395,6 +415,8 @@ function bindPlainLassoSelection({ svg, g, points, x, y, onLassoSelect }) {
     lassoPath = g
       .append("path")
       .attr("class", "projection-lasso-path")
+      .attr("stroke", lassoColor || null)
+      .attr("fill", lassoColor || null)
       .attr("d", getLassoPath(lassoPoints));
 
     svgNode.setPointerCapture?.(event.pointerId);
@@ -417,6 +439,7 @@ export function renderPlainMdsPlot({
   selectedPointIds = null,
   onPointToggle = null,
   onLassoSelect = null,
+  lassoColor = null,
 }) {
   const { svg, g, innerWidth, innerHeight } = buildChart(container, clearContainer);
   const sizeScale = resolvePointSizeScale(container);
@@ -438,7 +461,7 @@ export function renderPlainMdsPlot({
   applyCircleRadius(circles, POINT_RADIUS, sizeScale);
   circles.append("title").text((point) => `id: ${point.id}`);
   bindPlainPointSelection(circles, selectedPointIds, onPointToggle);
-  bindPlainLassoSelection({ svg, g, points, x, y, onLassoSelect });
+  bindPlainLassoSelection({ svg, g, points, x, y, onLassoSelect, lassoColor });
 }
 
 export async function animatePlainMdsPlotInterpolation({

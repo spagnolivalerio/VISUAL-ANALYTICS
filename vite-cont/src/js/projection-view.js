@@ -18,6 +18,7 @@ const WEIGHT_MAX = "1";
 const WEIGHT_STEP = "0.01";
 const LIVE_UPDATE_DEBOUNCE_MS = 90;
 const INTERPOLATION_STEPS = 8;
+const DEFAULT_SELECTION_HUE = 24;
 
 let initialized = false;
 let activeDataset = null;
@@ -28,7 +29,11 @@ let baseResizeObserver = null;
 let weightedResizeObserver = null;
 let projectionRunVersion = 0;
 let liveUpdateTimer = null;
-const selectedPointIds = new Set();
+let selectionCounter = 1;
+let activeSelectionHue = DEFAULT_SELECTION_HUE;
+let activeSelectionColor = hueToColor(DEFAULT_SELECTION_HUE);
+let activeSelectionId = null;
+const selections = [];
 
 function getElement(id) {
   return document.getElementById(id);
@@ -48,6 +53,10 @@ function getWeightsList() {
 
 function getStatusElement() {
   return getElement("projection-status");
+}
+
+function getSelectionsList() {
+  return getElement("projection-selections-list");
 }
 
 function setStatus(message) {
@@ -123,27 +132,196 @@ function getPointKey(pointId) {
   return String(pointId);
 }
 
-function toggleSelectedPoint(pointId, shouldSelect) {
-  const key = getPointKey(pointId);
-  if (shouldSelect) {
-    selectedPointIds.add(key);
-  } else {
-    selectedPointIds.delete(key);
+function hueToColor(hue) {
+  return `hsl(${Math.round(Number(hue) || 0)} 88% 52%)`;
+}
+
+function setActiveSelectionHue(hue) {
+  activeSelectionHue = Math.max(0, Math.min(360, Number(hue) || 0));
+  activeSelectionColor = hueToColor(activeSelectionHue);
+  const swatch = getElement("projection-selection-current-color");
+  const marker = document.querySelector(".selection-color-wheel-marker");
+  if (swatch) {
+    swatch.style.background = activeSelectionColor;
   }
+  if (marker) {
+    const angle = ((activeSelectionHue - 90) * Math.PI) / 180;
+    const radius = 41;
+    marker.style.left = `${50 + Math.cos(angle) * radius}%`;
+    marker.style.top = `${50 + Math.sin(angle) * radius}%`;
+    marker.style.background = activeSelectionColor;
+  }
+}
+
+function setColorPopoverOpen(open) {
+  const button = getElement("projection-selection-color-btn");
+  const popover = getElement("projection-selection-color-popover");
+  if (!button || !popover) {
+    return;
+  }
+  button.setAttribute("aria-expanded", open ? "true" : "false");
+  popover.hidden = !open;
+}
+
+function updateColorFromWheelEvent(event) {
+  const wheel = getElement("projection-selection-color-wheel");
+  if (!wheel) {
+    return;
+  }
+  activeSelectionId = null;
+  const rect = wheel.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const dx = event.clientX - centerX;
+  const dy = event.clientY - centerY;
+  const hue = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
+  setActiveSelectionHue((hue + 360) % 360);
+  renderSelectionList();
+}
+
+function getSelectedPointColorMap() {
+  const colorByPointId = new Map();
+  selections.forEach((selection) => {
+    selection.pointIds.forEach((pointId) => {
+      colorByPointId.set(pointId, selection.color);
+    });
+  });
+  return colorByPointId;
+}
+
+function createSelection(pointIds) {
+  const uniquePointIds = Array.from(new Set(pointIds.map(getPointKey)));
+  if (!uniquePointIds.length) {
+    return;
+  }
+  const uniquePointIdSet = new Set(uniquePointIds);
+  const activeSelection = selections.find((selection) => selection.id === activeSelectionId);
+  for (let index = selections.length - 1; index >= 0; index -= 1) {
+    const selection = selections[index];
+    if (selection === activeSelection) {
+      continue;
+    }
+    uniquePointIdSet.forEach((pointId) => selection.pointIds.delete(pointId));
+    if (!selection.pointIds.size) {
+      selections.splice(index, 1);
+    }
+  }
+  if (activeSelection) {
+    uniquePointIds.forEach((pointId) => activeSelection.pointIds.add(pointId));
+    renderSelectionList();
+    renderResults();
+    return;
+  }
+  const id = `selection-${Date.now()}-${selectionCounter}`;
+  selections.push({
+    id,
+    name: `selection ${selectionCounter}`,
+    color: activeSelectionColor,
+    hue: activeSelectionHue,
+    pointIds: new Set(uniquePointIds),
+  });
+  selectionCounter += 1;
+  renderSelectionList();
+  renderResults();
+}
+
+function activateSelection(selectionId) {
+  const selection = selections.find((item) => item.id === selectionId);
+  if (!selection) {
+    return;
+  }
+  activeSelectionId = selection.id;
+  setActiveSelectionHue(selection.hue ?? activeSelectionHue);
+  renderSelectionList();
+}
+
+function toggleSelectedPoint(pointId) {
+  const key = getPointKey(pointId);
+  const containingSelection = [...selections]
+    .reverse()
+    .find((selection) => selection.pointIds.has(key));
+  if (containingSelection) {
+    containingSelection.pointIds.delete(key);
+    if (!containingSelection.pointIds.size) {
+      selections.splice(selections.indexOf(containingSelection), 1);
+      if (activeSelectionId === containingSelection.id) {
+        activeSelectionId = null;
+      }
+    }
+  } else {
+    createSelection([key]);
+    return;
+  }
+  renderSelectionList();
   renderResults();
 }
 
 function addSelectedPoints(pointIds) {
-  pointIds.forEach((pointId) => selectedPointIds.add(getPointKey(pointId)));
+  createSelection(pointIds);
+}
+
+function deleteSelection(selectionId) {
+  const index = selections.findIndex((selection) => selection.id === selectionId);
+  if (index < 0) {
+    return;
+  }
+  if (activeSelectionId === selectionId) {
+    activeSelectionId = null;
+  }
+  selections.splice(index, 1);
+  renderSelectionList();
   renderResults();
 }
 
-function clearSelectedPoints() {
-  if (!selectedPointIds.size) {
+function clearSelections() {
+  selections.splice(0, selections.length);
+  selectionCounter = 1;
+  activeSelectionId = null;
+  renderSelectionList();
+}
+
+function renderSelectionList() {
+  const list = getSelectionsList();
+  if (!list) {
     return;
   }
-  selectedPointIds.clear();
-  renderResults();
+  list.innerHTML = "";
+  if (!selections.length) {
+    return;
+  }
+  selections.forEach((selection) => {
+    const row = document.createElement("div");
+    const swatch = document.createElement("button");
+    const nameInput = document.createElement("input");
+    const deleteButton = document.createElement("button");
+
+    row.className = "projection-selection-row";
+    if (selection.id === activeSelectionId) {
+      row.classList.add("is-active");
+    }
+    swatch.className = "projection-selection-swatch";
+    swatch.type = "button";
+    swatch.style.background = selection.color;
+    swatch.setAttribute("aria-label", `Use ${selection.name} color`);
+    swatch.title = "Use this selection color";
+    swatch.addEventListener("click", () => activateSelection(selection.id));
+    nameInput.className = "projection-selection-name";
+    nameInput.type = "text";
+    nameInput.value = selection.name;
+    nameInput.setAttribute("aria-label", "Selection name");
+    nameInput.addEventListener("input", () => {
+      selection.name = nameInput.value.trim() || selection.name;
+    });
+    deleteButton.className = "projection-selection-delete";
+    deleteButton.type = "button";
+    deleteButton.setAttribute("aria-label", `Delete ${selection.name}`);
+    deleteButton.title = "Delete selection";
+    deleteButton.textContent = "×";
+    deleteButton.addEventListener("click", () => deleteSelection(selection.id));
+
+    row.append(swatch, nameInput, deleteButton);
+    list.appendChild(row);
+  });
 }
 
 function buildWeightRow(attribute, initialValue = DEFAULT_WEIGHT) {
@@ -214,9 +392,10 @@ function drawProjection(container, result, scaleDomain = null) {
     clearContainer: clearPlotContainer,
     scaleDomain,
     useNice: false,
-    selectedPointIds,
+    selectedPointIds: getSelectedPointColorMap(),
     onPointToggle: toggleSelectedPoint,
     onLassoSelect: addSelectedPoints,
+    lassoColor: activeSelectionColor,
   });
 }
 
@@ -335,7 +514,7 @@ async function updateWeightedProjection(currentVersion = ++projectionRunVersion)
               fromScaleDomain: fromDomain,
               toScaleDomain: toDomain,
               useNice: false,
-              selectedPointIds,
+              selectedPointIds: getSelectedPointColorMap(),
               interpolationSteps: INTERPOLATION_STEPS,
               shouldContinue,
             })
@@ -348,7 +527,7 @@ async function updateWeightedProjection(currentVersion = ++projectionRunVersion)
           fromScaleDomain: fromDomain,
           toScaleDomain: toDomain,
           useNice: false,
-          selectedPointIds,
+          selectedPointIds: getSelectedPointColorMap(),
           interpolationSteps: INTERPOLATION_STEPS,
           shouldContinue,
         }),
@@ -389,7 +568,7 @@ export async function setProjectionDataset(dataset, { run = true } = {}) {
   activeDataset = dataset || null;
   lastBaseResult = null;
   lastWeightedResult = null;
-  selectedPointIds.clear();
+  clearSelections();
   setPlotPlaceholder(getBaseContainer(), "Computing the unweighted projection.");
   setPlotPlaceholder(getWeightedContainer(), "Computing the weighted projection.");
   notifyProjectionContextChange();
@@ -411,7 +590,7 @@ export function resetProjectionView() {
   attributes = [];
   lastBaseResult = null;
   lastWeightedResult = null;
-  selectedPointIds.clear();
+  clearSelections();
   renderWeights();
   setPlotPlaceholder(getBaseContainer(), "Choose a dataset to render MDS.");
   setPlotPlaceholder(getWeightedContainer(), "Choose a dataset to render MDS.");
@@ -432,9 +611,21 @@ export async function activateProjectionView() {
 
 function bindControls() {
   getElement("reset-projection-weights-btn")?.addEventListener("click", resetWeights);
-  getElement("clear-projection-selection-btn")?.addEventListener("click", clearSelectedPoints);
-  configurePointSizeSlider(getBaseContainer(), getElement("point-size-projection-base"));
-  configurePointSizeSlider(getWeightedContainer(), getElement("point-size-projection-weighted"));
+  getElement("projection-selection-color-btn")?.addEventListener("click", () => {
+    const popover = getElement("projection-selection-color-popover");
+    setColorPopoverOpen(Boolean(popover?.hidden));
+  });
+  getElement("projection-selection-color-wheel")?.addEventListener("click", updateColorFromWheelEvent);
+  document.addEventListener("click", (event) => {
+    const control = document.querySelector(".selection-color-control");
+    if (control && !control.contains(event.target)) {
+      setColorPopoverOpen(false);
+    }
+  });
+  setActiveSelectionHue(activeSelectionHue);
+  renderSelectionList();
+  configurePointSizeSlider(getBaseContainer(), getElement("point-size-projection-global"));
+  configurePointSizeSlider(getWeightedContainer(), getElement("point-size-projection-global"));
 }
 
 export async function initProjectionView() {
