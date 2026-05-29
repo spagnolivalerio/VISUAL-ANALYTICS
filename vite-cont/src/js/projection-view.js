@@ -215,7 +215,7 @@ function createSelection(pointIds) {
   const id = `selection-${Date.now()}-${selectionCounter}`;
   selections.push({
     id,
-    name: `selection ${selectionCounter}`,
+    name: `Selection ${selectionCounter}`,
     color: activeSelectionColor,
     hue: activeSelectionHue,
     pointIds: new Set(uniquePointIds),
